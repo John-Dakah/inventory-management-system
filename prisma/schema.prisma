@@ -1,0 +1,86 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+ 
+}
+
+enum UserRole {
+  admin
+  warehouse_manager
+  sales_person
+}
+
+model OUR_USER {
+  id         String   @id @default(uuid())
+  email      String   @unique
+  password   String
+  fullName   String
+  department String?  // Make this field optional
+  status     String @default("ACTIVE")
+  role      UserRole
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  sku         String   @unique
+  price       Float
+  quantity    Int
+  category    String?
+  vendor      String?
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+model Supplier {
+  id            String   @id @default(cuid())
+  name          String
+  contactPerson String
+  email         String
+  phone         String
+  products      String
+  status        String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+model StockItem {
+  id          String   @id @default(cuid())
+  name        String
+  sku         String   @unique
+  category    String
+  quantity    Int
+  location    String
+  status      String
+  lastUpdated DateTime
+  type        String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  transactions StockTransaction[]
+}
+
+model StockTransaction {
+  id               String   @id @default(cuid())
+  stockItem        StockItem @relation(fields: [stockItemId], references: [id])
+  stockItemId      String
+  type             String
+  quantity         Int
+  previousQuantity Int
+  newQuantity      Int
+  location         String
+  reference        String?
+  reason           String?
+  notes            String?
+  createdAt        DateTime @default(now())
+}
+
+
