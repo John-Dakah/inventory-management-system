@@ -1,140 +1,133 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Button } from "@/components/ui/button"
-import { Loader2, CloudIcon as CloudSync, Check, AlertTriangle, Wifi, WifiOff } from "lucide-react"
-import { motion } from "framer-motion"
-import { getPendingSyncItems, processSyncQueue } from "@/lib/sync-manager"
+import { useEffect, useState } from "react"
+import { RefreshCw, WifiOff, AlertCircle } from "lucide-react"
+import { useNetworkStatus } from "@/hooks/use-network-status"
+import { getPendingSupplierCount } from "@/lib/supplier-service"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 export function GlobalSyncIndicator() {
+  const isOnline = useNetworkStatus()
   const [pendingCount, setPendingCount] = useState(0)
   const [isSyncing, setIsSyncing] = useState(false)
-  const [isOnline, setIsOnline] = useState(true)
-  const [lastSynced, setLastSynced] = useState<Date | null>(null)
-  const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "success" | "error">("idle")
+  const [syncError, setSyncError] = useState<string | null>(null)
+  const [isVisible, setIsVisible] = useState(false)
 
-  // Check online status
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true)
-    const handleOffline = () => setIsOnline(false)
-
-    // Set initial state
-    setIsOnline(navigator.onLine)
-
-    window.addEventListener("online", handleOnline)
-    window.addEventListener("offline", handleOffline)
-
-    return () => {
-      window.removeEventListener("online", handleOnline)
-      window.removeEventListener("offline", handleOffline)
-    }
-  }, [])
-
-  // Check for pending sync items
-  useEffect(() => {
-    const checkPendingItems = async () => {
-      try {
-        const items = await getPendingSyncItems()
-        setPendingCount(items.length)
-      } catch (error) {
-        console.error("Error checking pending items:", error)
-      }
+    const checkPendingChanges = async () => {
+      const count = await getPendingSupplierCount()
+      setPendingCount(count)
+      setIsVisible(count > 0 || isSyncing || !!syncError)
     }
 
-    // Check on mount
-    checkPendingItems()
+    checkPendingChanges()
 
-    // Set up interval to check periodically
-    const interval = setInterval(checkPendingItems, 30000) // Check every 30 seconds
+    // Check for pending changes every 15 seconds
+    const interval = setInterval(checkPendingChanges, 15000)
 
     return () => clearInterval(interval)
-  }, [])
+  }, [isSyncing, syncError])
 
-  const syncNow = async () => {
-    if (!isOnline || isSyncing) return
+  // Listen for sync events
+  useEffect(() => {
+    const handleSyncStart = () => {
+      setIsSyncing(true)
+      setSyncError(null)
+      setIsVisible(true)
+    }
 
-    setIsSyncing(true)
-    setSyncStatus("syncing")
-
-    try {
-      // Process sync queue
-      const success = await processSyncQueue()
-
-      if (success) {
-        // Update last synced time
-        setLastSynced(new Date())
-        setPendingCount(0)
-        setSyncStatus("success")
-      } else {
-        setSyncStatus("error")
-      }
-    } catch (error) {
-      console.error("Error syncing data:", error)
-      setSyncStatus("error")
-    } finally {
+    const handleSyncEnd = (event: Event) => {
+      const customEvent = event as CustomEvent
       setIsSyncing(false)
 
-      // Reset status after a delay
-      setTimeout(() => {
-        if (syncStatus !== "error") {
-          setSyncStatus("idle")
-        }
-      }, 3000)
+      // Check if there was an error
+      if (customEvent.detail?.error) {
+        setSyncError(customEvent.detail.error)
+      } else {
+        setSyncError(null)
+      }
+
+      // Check pending count again
+      getPendingSupplierCount().then((count) => {
+        setPendingCount(count)
+        setIsVisible(count > 0 || !!customEvent.detail?.error)
+      })
     }
+
+    const handleSyncError = (event: Event) => {
+      const customEvent = event as CustomEvent
+      if (customEvent.detail?.error) {
+        setSyncError(customEvent.detail.error)
+        setIsVisible(true)
+      }
+    }
+
+    window.addEventListener("sync-start", handleSyncStart)
+    window.addEventListener("sync-end", handleSyncEnd)
+    window.addEventListener("sync-error", handleSyncError)
+
+    return () => {
+      window.removeEventListener("sync-start", handleSyncStart)
+      window.removeEventListener("sync-end", handleSyncEnd)
+      window.removeEventListener("sync-error", handleSyncError)
+    }
+  }, [])
+
+  // Also show when network status changes
+  useEffect(() => {
+    if (!isOnline && pendingCount > 0) {
+      setIsVisible(true)
+    }
+  }, [isOnline, pendingCount])
+
+  if (!isVisible) {
+    return null
   }
 
-  if (pendingCount === 0 && syncStatus === "idle") {
-    return (
-      <div className="fixed bottom-4 right-4 flex items-center gap-2 bg-background/80 backdrop-blur-sm p-2 rounded-full shadow-md border">
-        {isOnline ? <Wifi className="h-4 w-4 text-green-500" /> : <WifiOff className="h-4 w-4 text-orange-500" />}
-      </div>
-    )
+  let bgColor = "bg-primary"
+  let icon = <RefreshCw className={`h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} />
+  let message = ""
+
+  if (!isOnline) {
+    bgColor = "bg-amber-500"
+    icon = <WifiOff className="h-4 w-4" />
+    message = "Offline - Changes saved locally"
+  } else if (syncError) {
+    bgColor = "bg-red-500"
+    icon = <AlertCircle className="h-4 w-4" />
+    message = "Sync error"
+  } else if (isSyncing) {
+    message = "Syncing..."
+  } else {
+    message = `${pendingCount} pending change${pendingCount === 1 ? "" : "s"}`
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 20 }}
-      transition={{ duration: 0.2 }}
-      className="fixed bottom-4 right-4 flex items-center gap-2 bg-background/80 backdrop-blur-sm p-2 px-4 rounded-full shadow-md border"
-    >
-      {syncStatus === "syncing" ? (
-        <Loader2 className="h-4 w-4 animate-spin text-primary" />
-      ) : syncStatus === "success" ? (
-        <Check className="h-4 w-4 text-green-500" />
-      ) : syncStatus === "error" ? (
-        <AlertTriangle className="h-4 w-4 text-red-500" />
-      ) : (
-        <CloudSync className="h-4 w-4 text-primary" />
-      )}
-
-      <div className="text-xs">
-        {syncStatus === "syncing" ? (
-          <span>Syncing...</span>
-        ) : syncStatus === "success" ? (
-          <span>Sync complete</span>
-        ) : syncStatus === "error" ? (
-          <span>Sync failed</span>
-        ) : (
-          <span>
-            {pendingCount} {pendingCount === 1 ? "change" : "changes"} pending
-          </span>
-        )}
-      </div>
-
-      {!isSyncing && syncStatus !== "success" && (
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-6 px-2 text-xs"
-          onClick={syncNow}
-          disabled={!isOnline || isSyncing}
-        >
-          Sync
-        </Button>
-      )}
-    </motion.div>
+    <div className="fixed bottom-4 right-4 z-50">
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className={`flex items-center gap-2 rounded-full ${bgColor} px-3 py-2 text-sm text-white shadow-lg`}>
+              {icon}
+              <span>{message}</span>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="left">
+            {!isOnline ? (
+              <p>You're currently offline. Changes are saved locally and will sync when you're back online.</p>
+            ) : syncError ? (
+              <p>Error: {syncError}</p>
+            ) : isSyncing ? (
+              <p>Syncing your changes with the server...</p>
+            ) : (
+              <p>
+                You have {pendingCount} change{pendingCount === 1 ? "" : "s"} waiting to be synced.
+              </p>
+            )}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </div>
   )
 }
 

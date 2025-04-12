@@ -49,16 +49,10 @@ import { FloatingNavbar } from "@/components/ui/floating-navbar"
 import { HoverEffect } from "@/components/ui/card-hover-effect"
 import { InfiniteMovingCards } from "@/components/ui/infinite-moving-cards"
 import { TracingBeam } from "@/components/ui/tracing-beam"
-// import {   ShieldCheckIcon } from "@/components/ui/icons"
-import { Progress } from "@/components/ui/progress"
-// import {
-//   EyeIcon,
 
-//   BarChartIcon, MapPinIcon,
-//   TruckIcon,
-//   DownloadIcon,
-//   CalendarIcon,
-// } from "@/components/ui/icons"
+import { Progress } from "@/components/ui/progress"
+
+
 
 export default function LandingPage() {
   const router = useRouter()

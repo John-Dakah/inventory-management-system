@@ -1,44 +1,48 @@
 "use client"
 
-import { useState, useEffect } from "react"
 import { Wifi, WifiOff } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { useNetworkStatus } from "@/hooks/use-network-status"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 export function NetworkStatus() {
-  const [isOnline, setIsOnline] = useState(true)
+  const isOnline = useNetworkStatus()
 
-  useEffect(() => {
-    // Set initial state
-    setIsOnline(navigator.onLine)
-
-    // Add event listeners
-    const handleOnline = () => setIsOnline(true)
-    const handleOffline = () => setIsOnline(false)
-
-    window.addEventListener("online", handleOnline)
-    window.addEventListener("offline", handleOffline)
-
-    // Clean up
-    return () => {
-      window.removeEventListener("online", handleOnline)
-      window.removeEventListener("offline", handleOffline)
-    }
-  }, [])
+  // Get the raw browser online status for comparison
+  const browserOnlineStatus = typeof navigator !== "undefined" ? navigator.onLine : false
 
   return (
-    <Badge variant={isOnline ? "outline" : "destructive"} className="flex items-center gap-1">
-      {isOnline ? (
-        <>
-          <Wifi className="h-3 w-3" />
-          <span className="text-xs">Online</span>
-        </>
-      ) : (
-        <>
-          <WifiOff className="h-3 w-3" />
-          <span className="text-xs">Offline</span>
-        </>
-      )}
-    </Badge>
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge
+            variant={isOnline ? "default" : "outline"}
+            className={isOnline ? "bg-green-500" : "text-amber-500 border-amber-500"}
+          >
+            {isOnline ? (
+              <>
+                <Wifi className="mr-1 h-3 w-3" />
+                <span>Online</span>
+              </>
+            ) : (
+              <>
+                <WifiOff className="mr-1 h-3 w-3" />
+                <span>Offline</span>
+              </>
+            )}
+          </Badge>
+        </TooltipTrigger>
+        <TooltipContent>
+          {isOnline ? (
+            <p>Connected to server</p>
+          ) : browserOnlineStatus ? (
+            <p>Browser reports online, but can't reach the server</p>
+          ) : (
+            <p>No network connection available</p>
+          )}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )
 }
 

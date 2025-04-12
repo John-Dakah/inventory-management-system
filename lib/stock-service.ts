@@ -1,8 +1,8 @@
 import { v4 as uuidv4 } from "uuid"
-import { getDB } from "./db-utils"
+import { getDB } from "../db-utils"
 import { addToSyncQueue } from "./sync-manager"
 import { getProduct, saveProduct } from "./product-service"
-import type { Product, StockItem, StockTransaction } from "@/types"
+import type { Product, StockItem, StockTransaction } from "../types"
 
 // Get all stock items
 export async function getStockItems(filter?: {

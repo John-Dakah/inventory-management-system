@@ -20,7 +20,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/use-toast"
 import { saveSupplier } from "@/lib/supplier-service"
-import { useNetworkStatus } from "@/hooks/useNetworkStatus"
+import { useNetworkStatus } from "@/app/hooks/use-network-status"
 import type { Supplier } from "@/types"
 
 const supplierSchema = z.object({

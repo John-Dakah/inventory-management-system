@@ -47,6 +47,8 @@ model Supplier {
   name          String
   contactPerson String
   email         String
+  address       String
+  notes         String
   phone         String
   products      String
   status        String
