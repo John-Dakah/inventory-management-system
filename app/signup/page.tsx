@@ -278,7 +278,7 @@ export default function SignupPage() {
                       className="text-sm font-medium leading-none cursor-pointer peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                     >
                       I accept the{" "}
-                      <Link href="/terms" className="text-primary hover:underline">
+                      <Link href="/terms-of-service" className="text-primary hover:underline">
                         terms and conditions
                       </Link>
                     </Label>

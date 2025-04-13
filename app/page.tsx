@@ -871,22 +871,22 @@ export default function LandingPage() {
           <h3 className="font-semibold mb-4">Resources</h3>
           <ul className="space-y-2 text-sm">
             <li>
-              <Link href="#" className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">
+              <Link href="/documentation" className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">
                 Documentation
               </Link>
             </li>
             <li>
-              <Link href="#" className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">
+              <Link href="/tutorials" className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">
                 Tutorials
               </Link>
             </li>
             <li>
-              <Link href="#" className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">
+              <Link href="/blog" className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">
                 Blog
               </Link>
             </li>
             <li>
-              <Link href="#" className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">
+              <Link href="/support" className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">
                 Support
               </Link>
             </li>
@@ -897,22 +897,22 @@ export default function LandingPage() {
           <h3 className="font-semibold mb-4">Company</h3>
           <ul className="space-y-2 text-sm">
             <li>
-              <Link href="#" className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">
+              <Link href="/about" className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">
                 About
               </Link>
             </li>
             <li>
-              <Link href="#" className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">
+              <Link href="/careers" className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">
                 Careers
               </Link>
             </li>
             <li>
-              <Link href="#" className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">
+              <Link href="/privacy-policy" className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">
                 Privacy Policy
               </Link>
             </li>
             <li>
-              <Link href="#" className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">
+              <Link href="/terms-of-service" className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">
                 Terms of Service
               </Link>
             </li>
