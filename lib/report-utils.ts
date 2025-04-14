@@ -1,175 +1,88 @@
-import { getProducts, getStockTransactions, getSuppliers } from "@/lib/db"
+import { getProducts, getStockTransactions,getStockItems, getSupplierNames } from "@/lib/db"
 import { prisma } from "@/lib/prisma"
+// IndexedDB fallback
 
-// Calculate inventory value (price * quantity) for all products
-export async function calculateInventoryValue() {
+// Fetch suppliers from Prisma or IndexedDB as a fallback
+import { Supplier } from "@/types"; // Adjust the path to where the Supplier type is defined
+
+export async function getSuppliers(): Promise<{ id: string; name: string }[]> {
   try {
-    // Try to get data from Prisma first
-    const products = await prisma.product.findMany()
-
-    if (products.length > 0) {
-      return products.reduce((total, product) => total + product.price * product.quantity, 0)
+    const response = await fetch("/api/suppliers");
+    if (!response.ok) {
+      throw new Error("Failed to fetch suppliers");
     }
 
-    // Fall back to IndexedDB if Prisma fails or returns no data
-    const idbProducts = await getProducts()
-    return idbProducts.reduce((total, product) => total + product.price * product.quantity, 0)
+    const suppliers = await response.json();
+    return suppliers.suppliers; // Assuming the API returns { suppliers, total, page, limit }
   } catch (error) {
-    console.error("Error calculating inventory value:", error)
+    console.error("Error fetching suppliers:", error);
 
     // Fall back to IndexedDB
-    const idbProducts = await getProducts()
-    return idbProducts.reduce((total, product) => total + product.price * product.quantity, 0)
+    const idbSuppliers = await getSupplierNames();
+    return idbSuppliers.map((name, index) => ({
+      id: `fallback-${index}`, // Generate a fallback ID
+      name: name, // Use the string as the name
+    }));
   }
 }
 
-// Calculate stock turnover rate (approximation based on transactions)
-export async function calculateStockTurnoverRate() {
+// Calculate inventory value (price * quantity) for all products
+export async function calculateInventoryValue(): Promise<number> {
   try {
-    // Get all stock transactions for the last 30 days
-    const thirtyDaysAgo = new Date()
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-
-    // Try Prisma first
-    const transactions = await prisma.stockTransaction.findMany({
-      where: {
-        createdAt: {
-          gte: thirtyDaysAgo,
-        },
-      },
-    })
-
-    if (transactions.length > 0) {
-      // Count outgoing transactions (sales/usage)
-      const outTransactions = transactions.filter((t) => t.type === "out")
-
-      // Get current inventory
-      const stockItems = await prisma.stockItem.findMany()
-      const totalInventory = stockItems.reduce((sum, item) => sum + item.quantity, 0)
-
-      // Calculate turnover (simplified: outgoing transactions / average inventory)
-      const outgoingUnits = outTransactions.reduce((sum, t) => sum + t.quantity, 0)
-
-      // Annualize the 30-day rate (multiply by 12)
-      return totalInventory > 0 ? (outgoingUnits / totalInventory) * 12 : 0
+    const response = await fetch("/api/reports/inventory-value");
+    if (!response.ok) {
+      throw new Error("Failed to fetch inventory value");
     }
 
-    // Fall back to IndexedDB
-    const idbTransactions = await getStockTransactions()
-    const thirtyDayTransactions = idbTransactions.filter((t) => new Date(t.createdAt) >= thirtyDaysAgo)
-
-    const outTransactions = thirtyDayTransactions.filter((t) => t.type === "out")
-    const stockItems = await getStockItems()
-    const totalInventory = stockItems.reduce((sum, item) => sum + item.quantity, 0)
-
-    const outgoingUnits = outTransactions.reduce((sum, t) => sum + t.quantity, 0)
-    return totalInventory > 0 ? (outgoingUnits / totalInventory) * 12 : 0
+    const data = await response.json();
+    return data.inventoryValue;
   } catch (error) {
-    console.error("Error calculating stock turnover rate:", error)
+    console.error("Error calculating inventory value:", error);
+    return 0; // Return a fallback value
+  }
+}
+// Calculate stock turnover rate (approximation based on transactions)
+export async function calculateStockTurnoverRate(): Promise<number> {
+  try {
+    const response = await fetch("/api/reports/stock-turnover-rate");
+    if (!response.ok) {
+      throw new Error("Failed to fetch stock turnover rate");
+    }
 
-    // Fall back to IndexedDB with the same calculation
-    const idbTransactions = await getStockTransactions()
-    const thirtyDaysAgo = new Date()
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+    const data = await response.json();
+    return data.turnoverRate;
+  } catch (error) {
+    console.error("Error fetching stock turnover rate:", error);
 
-    const thirtyDayTransactions = idbTransactions.filter((t) => new Date(t.createdAt) >= thirtyDaysAgo)
+    // Fall back to IndexedDB
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    const outTransactions = thirtyDayTransactions.filter((t) => t.type === "out")
-    const stockItems = await getStockItems()
-    const totalInventory = stockItems.reduce((sum, item) => sum + item.quantity, 0)
+    const idbTransactions = await getStockTransactions();
+    const thirtyDayTransactions = idbTransactions.filter((t) => new Date(t.createdAt) >= thirtyDaysAgo);
 
-    const outgoingUnits = outTransactions.reduce((sum, t) => sum + t.quantity, 0)
-    return totalInventory > 0 ? (outgoingUnits / totalInventory) * 12 : 0
+    const outTransactions = thirtyDayTransactions.filter((t) => t.type === "out");
+    const stockItems = await getStockItems();
+    const totalInventory = stockItems.reduce((sum, item) => sum + item.quantity, 0);
+
+    const outgoingUnits = outTransactions.reduce((sum, t) => sum + t.quantity, 0);
+    return totalInventory > 0 ? (outgoingUnits / totalInventory) * 12 : 0;
   }
 }
 
 // Get inventory value trends over time (last 6 months)
 export async function getInventoryValueTrends(period = "6months") {
   try {
-    const endDate = new Date()
-    const startDate = new Date()
-
-    // Set the start date based on the selected period
-    switch (period) {
-      case "30days":
-        startDate.setDate(startDate.getDate() - 30)
-        break
-      case "3months":
-        startDate.setMonth(startDate.getMonth() - 3)
-        break
-      case "6months":
-        startDate.setMonth(startDate.getMonth() - 6)
-        break
-      case "12months":
-        startDate.setMonth(startDate.getMonth() - 12)
-        break
-      default:
-        startDate.setMonth(startDate.getMonth() - 6)
+    const response = await fetch(`/api/reports/inventory-value-trends?period=${period}`);
+    if (!response.ok) {
+      throw new Error("Failed to fetch inventory value trends");
     }
 
-    // Try to get data from Prisma first
-    const transactions = await prisma.stockTransaction.findMany({
-      where: {
-        createdAt: {
-          gte: startDate,
-          lte: endDate,
-        },
-      },
-      orderBy: {
-        createdAt: "asc",
-      },
-      include: {
-        stockItem: true,
-      },
-    })
-
-    if (transactions.length > 0) {
-      // Group transactions by month
-      const monthlyData: Record<string, number> = {}
-
-      // Initialize with all months in the period
-      const currentDate = new Date(startDate)
-      while (currentDate <= endDate) {
-        const monthYear = `${currentDate.toLocaleString("default", { month: "short" })} ${currentDate.getFullYear()}`
-        monthlyData[monthYear] = 0
-        currentDate.setMonth(currentDate.getMonth() + 1)
-      }
-
-      // Calculate running inventory value
-      let runningValue = 0
-
-      // Sort transactions by date
-      transactions.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-
-      // Process transactions
-      transactions.forEach((transaction) => {
-        const date = new Date(transaction.createdAt)
-        const monthYear = `${date.toLocaleString("default", { month: "short" })} ${date.getFullYear()}`
-
-        // Update running value based on transaction type
-        if (transaction.type === "in") {
-          // Assuming average value of $10 per item for simplicity
-          // In a real app, you would use the actual product price
-          runningValue += transaction.quantity * 10
-        } else if (transaction.type === "out") {
-          runningValue -= transaction.quantity * 10
-        }
-
-        monthlyData[monthYear] = runningValue
-      })
-
-      // Convert to array format for the chart
-      return Object.entries(monthlyData).map(([month, value]) => ({
-        month,
-        value: Math.max(0, value), // Ensure no negative values
-      }))
-    }
-
-    // Fall back to IndexedDB
-    return getFallbackInventoryTrends(period)
+    const data = await response.json();
+    return data;
   } catch (error) {
-    console.error("Error getting inventory value trends:", error)
-    return getFallbackInventoryTrends(period)
+    console.error("Error fetching inventory value trends:", error);
+    return [];
   }
 }
 
@@ -246,223 +159,139 @@ async function getFallbackInventoryTrends(period = "6months") {
 }
 
 // Get top products by value
-export async function getTopProductsByValue() {
+export async function getTopProductsByValue(): Promise<{ name: string; value: number }[]> {
   try {
-    // Try Prisma first
-    const products = await prisma.product.findMany({
-      orderBy: {
-        price: "desc",
-      },
-      take: 5,
-    })
-
-    if (products.length > 0) {
-      return products.map((product) => ({
-        name: product.name,
-        value: product.price * product.quantity,
-      }))
+    const response = await fetch("/api/reports/top-products");
+    if (!response.ok) {
+      throw new Error("Failed to fetch top products by value");
     }
 
-    // Fall back to IndexedDB
-    const idbProducts = await getProducts()
-
-    // Calculate value (price * quantity) for each product
-    const productsWithValue = idbProducts.map((product) => ({
-      name: product.name,
-      value: product.price * product.quantity,
-    }))
-
-    // Sort by value and take top 5
-    return productsWithValue.sort((a, b) => b.value - a.value).slice(0, 5)
+    const data = await response.json();
+    return data;
   } catch (error) {
-    console.error("Error getting top products by value:", error)
+    console.error("Error fetching top products by value:", error);
 
     // Fall back to IndexedDB
-    const idbProducts = await getProducts()
+    const idbProducts = await getProducts();
 
     // Calculate value (price * quantity) for each product
     const productsWithValue = idbProducts.map((product) => ({
       name: product.name,
       value: product.price * product.quantity,
-    }))
+    }));
 
     // Sort by value and take top 5
-    return productsWithValue.sort((a, b) => b.value - a.value).slice(0, 5)
+    return productsWithValue.sort((a, b) => b.value - a.value).slice(0, 5);
   }
 }
 
 // Get stock movement trends (in vs out)
-export async function getStockMovementTrends() {
+export async function getStockMovementTrends(): Promise<{ month: string; stockIn: number; stockOut: number }[]> {
   try {
-    // Get the last 6 months
-    const endDate = new Date()
-    const startDate = new Date()
-    startDate.setMonth(startDate.getMonth() - 6)
-
-    // Try Prisma first
-    const transactions = await prisma.stockTransaction.findMany({
-      where: {
-        createdAt: {
-          gte: startDate,
-          lte: endDate,
-        },
-      },
-    })
-
-    if (transactions.length > 0) {
-      // Group transactions by month and type
-      const monthlyData: Record<string, { stockIn: number; stockOut: number }> = {}
-
-      // Initialize with all months in the period
-      const currentDate = new Date(startDate)
-      while (currentDate <= endDate) {
-        const monthYear = `${currentDate.toLocaleString("default", { month: "short" })} ${currentDate.getFullYear()}`
-        monthlyData[monthYear] = { stockIn: 0, stockOut: 0 }
-        currentDate.setMonth(currentDate.getMonth() + 1)
-      }
-
-      // Process transactions
-      transactions.forEach((transaction) => {
-        const date = new Date(transaction.createdAt)
-        const monthYear = `${date.toLocaleString("default", { month: "short" })} ${date.getFullYear()}`
-
-        if (transaction.type === "in") {
-          monthlyData[monthYear].stockIn += transaction.quantity
-        } else if (transaction.type === "out") {
-          monthlyData[monthYear].stockOut += transaction.quantity
-        }
-      })
-
-      // Convert to array format for the chart
-      return Object.entries(monthlyData).map(([month, data]) => ({
-        month,
-        stockIn: data.stockIn,
-        stockOut: data.stockOut,
-      }))
+    const response = await fetch("/api/reports/stock-movement-trends");
+    if (!response.ok) {
+      throw new Error("Failed to fetch stock movement trends");
     }
 
-    // Fall back to IndexedDB
-    return getFallbackStockMovementTrends()
+    const data = await response.json();
+    return data;
   } catch (error) {
-    console.error("Error getting stock movement trends:", error)
-    return getFallbackStockMovementTrends()
+    console.error("Error fetching stock movement trends:", error);
+    return getFallbackStockMovementTrends();
   }
 }
 
 // Fallback function for stock movement trends using IndexedDB
-async function getFallbackStockMovementTrends() {
+async function getFallbackStockMovementTrends(): Promise<{ month: string; stockIn: number; stockOut: number }[]> {
   // Get the last 6 months
-  const endDate = new Date()
-  const startDate = new Date()
-  startDate.setMonth(startDate.getMonth() - 6)
+  const endDate = new Date();
+  const startDate = new Date();
+  startDate.setMonth(startDate.getMonth() - 6);
 
   // Get all transactions from IndexedDB
-  const transactions = await getStockTransactions()
+  const transactions = await getStockTransactions();
 
   // Filter transactions within the date range
   const filteredTransactions = transactions.filter((t) => {
-    const date = new Date(t.createdAt)
-    return date >= startDate && date <= endDate
-  })
+    const date = new Date(t.createdAt);
+    return date >= startDate && date <= endDate;
+  });
 
   // Group transactions by month and type
-  const monthlyData: Record<string, { stockIn: number; stockOut: number }> = {}
+  const monthlyData: Record<string, { stockIn: number; stockOut: number }> = {};
 
   // Initialize with all months in the period
-  const currentDate = new Date(startDate)
+  const currentDate = new Date(startDate);
   while (currentDate <= endDate) {
-    const monthYear = `${currentDate.toLocaleString("default", { month: "short" })} ${currentDate.getFullYear()}`
-    monthlyData[monthYear] = { stockIn: 0, stockOut: 0 }
-    currentDate.setMonth(currentDate.getMonth() + 1)
+    const monthYear = `${currentDate.toLocaleString("default", { month: "short" })} ${currentDate.getFullYear()}`;
+    monthlyData[monthYear] = { stockIn: 0, stockOut: 0 };
+    currentDate.setMonth(currentDate.getMonth() + 1);
   }
 
   // Process transactions
   filteredTransactions.forEach((transaction) => {
-    const date = new Date(transaction.createdAt)
-    const monthYear = `${date.toLocaleString("default", { month: "short" })} ${date.getFullYear()}`
+    const date = new Date(transaction.createdAt);
+    const monthYear = `${date.toLocaleString("default", { month: "short" })} ${date.getFullYear()}`;
 
     if (transaction.type === "in") {
-      monthlyData[monthYear].stockIn += transaction.quantity
+      monthlyData[monthYear].stockIn += transaction.quantity;
     } else if (transaction.type === "out") {
-      monthlyData[monthYear].stockOut += transaction.quantity
+      monthlyData[monthYear].stockOut += transaction.quantity;
     }
-  })
+  });
 
   // Convert to array format for the chart
   return Object.entries(monthlyData).map(([month, data]) => ({
     month,
     stockIn: data.stockIn,
     stockOut: data.stockOut,
-  }))
+  }));
 }
 
-// Get supplier performance data
-export async function getSupplierPerformance() {
-  try {
-    // Try Prisma first
-    const suppliers = await prisma.supplier.findMany()
 
-    if (suppliers.length > 0) {
-      // Since we don't have actual delivery performance data in the schema,
-      // we'll generate a random performance rate for each supplier
-      return suppliers.map((supplier) => ({
-        name: supplier.name,
-        rate: Math.floor(Math.random() * 15) + 85, // Random number between 85-99
-      }))
+// Get supplier performance data
+export async function getSupplierPerformance(): Promise<{ name: string; rate: number }[]> {
+  try {
+    const response = await fetch("/api/reports/supplier-performance");
+    if (!response.ok) {
+      throw new Error("Failed to fetch supplier performance");
     }
 
-    // Fall back to IndexedDB
-    const idbSuppliers = await getSuppliers()
-
-    return idbSuppliers.map((supplier) => ({
-      name: supplier.name,
-      rate: Math.floor(Math.random() * 15) + 85, // Random number between 85-99
-    }))
+    const data = await response.json();
+    return data;
   } catch (error) {
-    console.error("Error getting supplier performance:", error)
+    console.error("Error fetching supplier performance:", error);
 
     // Fall back to IndexedDB
-    const idbSuppliers = await getSuppliers()
+    const idbSuppliers = await getSuppliers();
 
     return idbSuppliers.map((supplier) => ({
       name: supplier.name,
       rate: Math.floor(Math.random() * 15) + 85, // Random number between 85-99
-    }))
+    }));
   }
 }
 
 // Get orders by supplier
-export async function getOrdersBySupplier() {
+export async function getOrdersBySupplier(): Promise<{ name: string; orders: number }[]> {
   try {
-    // Try Prisma first
-    const suppliers = await prisma.supplier.findMany()
-
-    if (suppliers.length > 0) {
-      // Since we don't have actual order data in the schema,
-      // we'll generate a random number of orders for each supplier
-      return suppliers.map((supplier) => ({
-        name: supplier.name,
-        orders: Math.floor(Math.random() * 30) + 15, // Random number between 15-44
-      }))
+    const response = await fetch("/api/reports/orders-by-supplier");
+    if (!response.ok) {
+      throw new Error("Failed to fetch orders by supplier");
     }
 
-    // Fall back to IndexedDB
-    const idbSuppliers = await getSuppliers()
-
-    return idbSuppliers.map((supplier) => ({
-      name: supplier.name,
-      orders: Math.floor(Math.random() * 30) + 15, // Random number between 15-44
-    }))
+    const data = await response.json();
+    return data;
   } catch (error) {
-    console.error("Error getting orders by supplier:", error)
+    console.error("Error fetching orders by supplier:", error);
 
     // Fall back to IndexedDB
-    const idbSuppliers = await getSuppliers()
+    const idbSuppliers = await getSuppliers();
 
     return idbSuppliers.map((supplier) => ({
       name: supplier.name,
       orders: Math.floor(Math.random() * 30) + 15, // Random number between 15-44
-    }))
+    }));
   }
 }
 
@@ -515,37 +344,22 @@ export async function getWarehouseCapacityUtilization() {
   }
 }
 
-// Get items by warehouse
-export async function getItemsByWarehouse() {
+
+
+export async function getItemsByWarehouse(): Promise<{ name: string; items: number }[]> {
   try {
-    // Get all stock items
-    const stockItems = await getStockItems()
+    const response = await fetch("/api/reports/items-by-warehouse");
+    if (!response.ok) {
+      throw new Error("Failed to fetch items by warehouse");
+    }
 
-    // Group items by location
-    const locationGroups: Record<string, number> = {}
-
-    stockItems.forEach((item) => {
-      if (!locationGroups[item.location]) {
-        locationGroups[item.location] = 0
-      }
-      locationGroups[item.location] += item.quantity
-    })
-
-    // Convert to array format for the chart
-    return Object.entries(locationGroups).map(([name, items]) => ({
-      name,
-      items,
-    }))
+    const data = await response.json();
+    return data;
   } catch (error) {
-    console.error("Error getting items by warehouse:", error)
+    console.error("Error fetching items by warehouse:", error);
 
     // Return fallback data
-    return [
-      { name: "Warehouse A", items: 8245 },
-      { name: "Warehouse B", items: 5120 },
-      { name: "Warehouse C", items: 9876 },
-      { name: "Warehouse D", items: 1651 },
-    ]
+    return [];
   }
 }
 

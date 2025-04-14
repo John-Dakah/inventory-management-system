@@ -57,13 +57,13 @@ export default function InventoryPage() {
       setIsLoading(true)
       try {
         // Check storage quota
-        const info = await checkStorageQuota()
-        setStorageInfo(info)
+        // const info = await checkStorageQuota()
+        // setStorageInfo(info)
 
-        // Show warning if storage usage is above 80%
-        if (info && info.percentUsed > 80) {
-          setShowStorageWarning(true)
-        }
+        // // Show warning if storage usage is above 80%
+        // if (info && info.percentUsed > 80) {
+        //   setShowStorageWarning(true)
+        // }
 
         // Load products
         const data = await getProducts()

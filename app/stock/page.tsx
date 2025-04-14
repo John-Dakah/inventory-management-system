@@ -347,12 +347,13 @@ export default function StockPage() {
         setStockItems((prev) => [newStockItem, ...prev])
 
         // Add the location to stats if it's new
-        if (!stats.locations.includes(stockInForm.location)) {
-          setStats((prev) => ({
-            ...prev,
-            locations: [...prev.locations, stockInForm.location],
-          }))
-        }
+    // Add the location to stats if it's new
+if (Array.isArray(stats.locations) && !stats.locations.includes(stockInForm.location)) {
+  setStats((prev) => ({
+    ...prev,
+    locations: [...prev.locations, stockInForm.location],
+  }));
+}
       }
 
       // Update stats
@@ -1203,19 +1204,23 @@ export default function StockPage() {
                 <div>
                   <h5 className="mb-2 text-sm font-medium">Category</h5>
                   <div className="space-y-2">
-                    {stats.categories.map((category) => (
-                      <div key={category} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`category-${category}`}
-                          checked={selectedCategories.includes(category)}
-                          onCheckedChange={() => handleCategoryChange(category)}
-                        />
-                        <Label htmlFor={`category-${category}`} className="text-sm font-normal">
-                          {category}
-                        </Label>
-                      </div>
-                    ))}
-                  </div>
+  {stats.categories && stats.categories.length > 0 ? (
+    stats.categories.map((category) => (
+      <div key={category} className="flex items-center space-x-2">
+        <Checkbox
+          id={`category-${category}`}
+          checked={selectedCategories.includes(category)}
+          onCheckedChange={() => handleCategoryChange(category)}
+        />
+        <Label htmlFor={`category-${category}`} className="text-sm font-normal">
+          {category}
+        </Label>
+      </div>
+    ))
+  ) : (
+    <p className="text-sm text-muted-foreground">No categories available</p>
+  )}
+</div>
                 </div>
 
                 <Separator />
@@ -1223,19 +1228,23 @@ export default function StockPage() {
                 <div>
                   <h5 className="mb-2 text-sm font-medium">Location</h5>
                   <div className="space-y-2">
-                    {stats.locations.map((location) => (
-                      <div key={location} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`location-${location}`}
-                          checked={selectedLocations.includes(location)}
-                          onCheckedChange={() => handleLocationChange(location)}
-                        />
-                        <Label htmlFor={`location-${location}`} className="text-sm font-normal">
-                          {location}
-                        </Label>
-                      </div>
-                    ))}
-                  </div>
+  {stats.locations && stats.locations.length > 0 ? (
+    stats.locations.map((location) => (
+      <div key={location} className="flex items-center space-x-2">
+        <Checkbox
+          id={`location-${location}`}
+          checked={selectedLocations.includes(location)}
+          onCheckedChange={() => handleLocationChange(location)}
+        />
+        <Label htmlFor={`location-${location}`} className="text-sm font-normal">
+          {location}
+        </Label>
+      </div>
+    ))
+  ) : (
+    <p className="text-sm text-muted-foreground">No locations available</p>
+  )}
+</div>
                 </div>
 
                 <Separator />
@@ -1243,19 +1252,23 @@ export default function StockPage() {
                 <div>
                   <h5 className="mb-2 text-sm font-medium">Type</h5>
                   <div className="space-y-2">
-                    {stats.types.map((type) => (
-                      <div key={type} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`type-${type}`}
-                          checked={selectedTypes.includes(type)}
-                          onCheckedChange={() => handleTypeChange(type)}
-                        />
-                        <Label htmlFor={`type-${type}`} className="text-sm font-normal">
-                          {type}
-                        </Label>
-                      </div>
-                    ))}
-                  </div>
+  {stats.types && stats.types.length > 0 ? (
+    stats.types.map((type) => (
+      <div key={type} className="flex items-center space-x-2">
+        <Checkbox
+          id={`type-${type}`}
+          checked={selectedTypes.includes(type)}
+          onCheckedChange={() => handleTypeChange(type)}
+        />
+        <Label htmlFor={`type-${type}`} className="text-sm font-normal">
+          {type}
+        </Label>
+      </div>
+    ))
+  ) : (
+    <p className="text-sm text-muted-foreground">No types available</p>
+  )}
+</div>
                 </div>
 
                 <Separator />
