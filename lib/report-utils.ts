@@ -1,4 +1,4 @@
-import { getProducts, getStockTransactions,getStockItems, getSupplierNames } from "@/lib/db"
+import { getProducts, getStockTransactions, getSupplierNames } from "@/lib/db"
 import { prisma } from "@/lib/prisma"
 // IndexedDB fallback
 
@@ -25,7 +25,14 @@ export async function getSuppliers(): Promise<{ id: string; name: string }[]> {
     }));
   }
 }
-
+export async function getStockItems(): Promise<{ name: string; quantity: number; status: string }[]> {
+  const response = await fetch("/api/reports/stock-items");
+  if (!response.ok) {
+    throw new Error("Failed to fetch stock items");
+  }
+  const data = await response.json();
+  return data;
+}
 // Calculate inventory value (price * quantity) for all products
 export async function calculateInventoryValue(): Promise<number> {
   try {
@@ -262,16 +269,22 @@ export async function getSupplierPerformance(): Promise<{ name: string; rate: nu
   } catch (error) {
     console.error("Error fetching supplier performance:", error);
 
-    // Fall back to IndexedDB
-    const idbSuppliers = await getSuppliers();
+    try {
+      // Fall back to IndexedDB
+      const idbSuppliers = await getSuppliers();
 
-    return idbSuppliers.map((supplier) => ({
-      name: supplier.name,
-      rate: Math.floor(Math.random() * 15) + 85, // Random number between 85-99
-    }));
+      return idbSuppliers.map((supplier) => ({
+        name: supplier.name,
+        rate: Math.floor(Math.random() * 15) + 85, // Random number between 85-99
+      }));
+    } catch (fallbackError) {
+      console.error("Error in fallback logic for supplier performance:", fallbackError);
+
+      // Return an empty array as a final fallback
+      return [];
+    }
   }
 }
-
 // Get orders by supplier
 export async function getOrdersBySupplier(): Promise<{ name: string; orders: number }[]> {
   try {

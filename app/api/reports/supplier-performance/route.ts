@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   try {
-    // Fetch all suppliers
+    // Fetch all suppliers from the database
     const suppliers = await prisma.supplier.findMany();
 
     // Generate random performance rates for each supplier

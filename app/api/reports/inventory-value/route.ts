@@ -10,11 +10,13 @@ export async function GET() {
       },
     });
 
-    const inventoryValue = products.reduce((total, product) => {
-      return total + product.price * product.quantity;
+    const totalValue = products.reduce((sum, product) => {
+      const price = product.price || 0;
+      const quantity = product.quantity || 0;
+      return sum + price * quantity;
     }, 0);
 
-    return NextResponse.json({ inventoryValue });
+    return NextResponse.json({ inventoryValue: totalValue });
   } catch (error) {
     console.error("Error fetching inventory value:", error);
     return NextResponse.json({ error: "Failed to fetch inventory value" }, { status: 500 });

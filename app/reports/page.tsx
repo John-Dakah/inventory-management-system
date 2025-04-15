@@ -1,10 +1,4 @@
-"use client"
-
-import { useEffect, useState } from "react"
-import { DownloadIcon, FilterIcon, Loader2Icon } from "lucide-react"
-
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+"use client";
 import {
   Area,
   AreaChart,
@@ -14,14 +8,18 @@ import {
   Legend,
   Line,
   LineChart,
-  ResponsiveContainer,
+  ResponsiveContainer, // Add this import
   Tooltip,
   XAxis,
   YAxis,
-} from "recharts"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useToast } from "@/components/ui/use-toast"
+} from "recharts";
+import { useEffect, useState } from "react";
+import { DownloadIcon, FilterIcon, Loader2Icon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useToast } from "@/components/ui/use-toast";
 import {
   calculateInventoryValue,
   calculateStockTurnoverRate,
@@ -29,18 +27,17 @@ import {
   getInventoryValueTrends,
   getItemsByWarehouse,
   getOrdersBySupplier,
-  // getStockItems, // Removed as it is not exported
   getStockMovementTrends,
   getSupplierPerformance,
   getTopProductsByValue,
   getWarehouseCapacityUtilization,
-} from "@/lib/report-utils"
-
+} from "@/lib/report-utils";
+import {getStockItems} from "@/lib/db"
 export default function ReportsPage() {
-  const { toast } = useToast()
-  const [isLoading, setIsLoading] = useState(true)
-  const [isExporting, setIsExporting] = useState(false)
-  const [timePeriod, setTimePeriod] = useState("6months")
+  const { toast } = useToast();
+  const [isLoading, setIsLoading] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
+  const [timePeriod, setTimePeriod] = useState("6months");
   const [reportData, setReportData] = useState({
     inventoryValue: 0,
     stockTurnoverRate: 0,
@@ -53,18 +50,17 @@ export default function ReportsPage() {
     ordersBySupplier: [] as any[],
     warehouseCapacity: [] as any[],
     itemsByWarehouse: [] as any[],
-  })
+  });
 
   useEffect(() => {
     async function loadReportData() {
       try {
-        setIsLoading(true)
+        setIsLoading(true);
 
-        // Load all data in parallel
         const [
           inventoryValue,
           stockTurnoverRate,
-          lowStockItems,
+          stockItems,
           inventoryTrends,
           topProducts,
           stockMovements,
@@ -75,7 +71,7 @@ export default function ReportsPage() {
         ] = await Promise.all([
           calculateInventoryValue(),
           calculateStockTurnoverRate(),
-          [], // Placeholder for missing getStockItems function
+          getStockItems(),
           getInventoryValueTrends(timePeriod),
           getTopProductsByValue(),
           getStockMovementTrends(),
@@ -83,13 +79,13 @@ export default function ReportsPage() {
           getOrdersBySupplier(),
           getWarehouseCapacityUtilization(),
           getItemsByWarehouse(),
-        ])
+        ]);
 
         setReportData({
           inventoryValue,
           stockTurnoverRate,
-          lowStockItems: lowStockItems.length,
-          avgFulfillmentTime: "2.3 days", // Placeholder as we don't track this
+          lowStockItems: stockItems.filter((item) => item.status === "Low Stock" || item.status === "Out of Stock").length,
+          avgFulfillmentTime: "2.3 days",
           inventoryTrends,
           topProducts,
           stockMovements,
@@ -97,57 +93,57 @@ export default function ReportsPage() {
           ordersBySupplier,
           warehouseCapacity,
           itemsByWarehouse,
-        })
+        });
       } catch (error) {
-        console.error("Error loading report data:", error)
+        console.error("Error loading report data:", error);
         toast({
           title: "Error",
           description: "Failed to load report data. Please try again.",
           variant: "destructive",
-        })
+        });
       } finally {
-        setIsLoading(false)
+        setIsLoading(false);
       }
     }
 
-    loadReportData()
-  }, [timePeriod, toast])
+    loadReportData();
+  }, [timePeriod, toast]);
 
   const handleExport = async () => {
     try {
-      setIsExporting(true)
-      const result = await generateReport("excel")
+      setIsExporting(true);
+      const result = await generateReport("excel");
 
       if (result.success) {
         toast({
           title: "Report Exported",
           description: `Successfully exported report as ${result.filename}`,
           duration: 3000,
-        })
+        });
       } else {
         toast({
           title: "Export Failed",
           description: "There was an error exporting your report. Please try again.",
           variant: "destructive",
           duration: 3000,
-        })
+        });
       }
     } catch (error) {
-      console.error("Error exporting report:", error)
+      console.error("Error exporting report:", error);
       toast({
         title: "Export Failed",
         description: "There was an error exporting your report. Please try again.",
         variant: "destructive",
         duration: 3000,
-      })
+      });
     } finally {
-      setIsExporting(false)
+      setIsExporting(false);
     }
-  }
+  };
 
   const handlePeriodChange = (value: string) => {
-    setTimePeriod(value)
-  }
+    setTimePeriod(value);
+  };
 
   if (isLoading) {
     return (
@@ -155,11 +151,12 @@ export default function ReportsPage() {
         <Loader2Icon className="mr-2 h-6 w-6 animate-spin" />
         <span>Loading report data...</span>
       </div>
-    )
+    );
   }
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Report Page Content */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Reports</h1>
@@ -536,6 +533,5 @@ export default function ReportsPage() {
         </TabsContent>
       </Tabs>
     </div>
-  )
+  );
 }
-
