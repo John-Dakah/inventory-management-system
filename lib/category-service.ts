@@ -1,10 +1,11 @@
 import { v4 as uuidv4 } from "uuid"
-import { getDB, addToSyncQueue } from "./db-utils"
+import { getDatabase,  } from "./db-utils"
+import { addToSyncQueue } from "@/lib/sync-utils" // adjust the path if needed
 
 // Get all categories
 export async function getCategories(filter) {
   try {
-    const db = await getDB()
+    const db = await getDatabase()
     let categories = await db.getAll("categories")
 
     // Filter out deleted categories
@@ -30,7 +31,7 @@ export async function getCategories(filter) {
 // Get category by ID
 export async function getCategory(id) {
   try {
-    const db = await getDB()
+    const db = await getDatabase()
     const category = await db.get("categories", id)
     return category && !category.deleted ? category : null
   } catch (error) {
@@ -42,7 +43,7 @@ export async function getCategory(id) {
 // Save category
 export async function saveCategory(category) {
   try {
-    const db = await getDB()
+    const db = await getDatabase()
 
     // Ensure category has an ID
     if (!category.id) {
@@ -78,7 +79,7 @@ export async function saveCategory(category) {
 // Delete category
 export async function deleteCategory(id) {
   try {
-    const db = await getDB()
+    const db = await getDatabase()
 
     // Get the category first
     const category = await db.get("categories", id)
@@ -91,7 +92,6 @@ export async function deleteCategory(id) {
 
       // Update in IndexedDB
       await db.put("categories", category)
-
       // Add to sync queue
       await addToSyncQueue({
         id: `category-${id}-${Date.now()}`,

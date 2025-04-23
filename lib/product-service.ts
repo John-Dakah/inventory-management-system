@@ -1,11 +1,11 @@
 import { v4 as uuidv4 } from "uuid"
-import { getDB, addToSyncQueue } from "./db-utils"
+import { getDatabase } from "./db-utils"
 import { createCategoryIfNotExists } from "./category-service"
-
+import {addToSyncQueue} from "@/lib/sync-utils" // adjust the path if needed
 // Get all products
 export async function getProducts(filter) {
   try {
-    const db = await getDB()
+    const db = await getDatabase()
     let products = await db.getAll("products")
 
     // Filter out deleted products
@@ -54,7 +54,7 @@ export async function getProducts(filter) {
 // Get product by ID
 export async function getProduct(id) {
   try {
-    const db = await getDB()
+    const db = await getDatabase()
     const product = await db.get("products", id)
     return product && !product.deleted ? product : null
   } catch (error) {
@@ -66,7 +66,7 @@ export async function getProduct(id) {
 // Save product
 export async function saveProduct(product) {
   try {
-    const db = await getDB()
+    const db = await getDatabase()
 
     // Ensure product has an ID
     if (!product.id) {

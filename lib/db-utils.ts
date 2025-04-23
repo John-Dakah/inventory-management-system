@@ -1,7 +1,7 @@
 import { openDB, type IDBPDatabase } from "idb"
 
 const DB_NAME = "suppliers_db"
-const DB_VERSION = 1
+const DB_VERSION = 4
 const SUPPLIERS_STORE = "suppliers"
 
 let dbPromise: Promise<IDBPDatabase> | null = null
@@ -10,6 +10,10 @@ export async function initializeDatabase() {
   if (!dbPromise) {
     dbPromise = openDB(DB_NAME, DB_VERSION, {
       upgrade(db) {
+        if (!db.objectStoreNames.contains("categories")) {
+          const store = db.createObjectStore("categories", { keyPath: "id" })
+          store.createIndex("name", "name", { unique: true })
+        }
         // Create suppliers store if it doesn't exist
         if (!db.objectStoreNames.contains(SUPPLIERS_STORE)) {
           const store = db.createObjectStore(SUPPLIERS_STORE, { keyPath: "id" })
@@ -19,13 +23,25 @@ export async function initializeDatabase() {
           store.createIndex("status", "status", { unique: false })
           store.createIndex("createdAt", "createdAt", { unique: false })
         }
+         // ✅ Add this block for syncQueue
+         if (!db.objectStoreNames.contains("syncQueue")) {
+          db.createObjectStore("syncQueue", { keyPath: "id" })
+        }
+        if (!db.objectStoreNames.contains("products")) {
+          const store = db.createObjectStore("products", { keyPath: "id" })
+          store.createIndex("category", "category", { unique: false })
+          store.createIndex("vendor", "vendor", { unique: false })
+          store.createIndex("price", "price", { unique: false })
+          store.createIndex("quantity", "quantity", { unique: false })
+        }
       },
     })
+      }
+    
+
+  return dbPromise;
+
   }
-
-  return dbPromise
-}
-
 export async function getDatabase() {
   if (!dbPromise) {
     return initializeDatabase()

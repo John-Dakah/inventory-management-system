@@ -2,7 +2,7 @@
 
 // Define the database structure
 const DB_NAME = "inventory-management"
-const DB_VERSION = 1
+const DB_VERSION = 3
 const STORES = [
   "customers",
   "products",

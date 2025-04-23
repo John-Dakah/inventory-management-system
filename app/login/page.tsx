@@ -13,7 +13,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { useToast } from "@/components/ui/use-toast"
 import { SparklesCore } from "@/components/ui/sparkles"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Checkbox } from "@/components/ui/checkbox"
+
 import { motion } from "framer-motion"
 
 type UserRole = "admin" | "warehouse_manager" | "sales_person"
