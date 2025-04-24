@@ -1,10 +1,16 @@
+import jwt from "jsonwebtoken"
+import { cookies } from "next/headers"
+import prisma from "@/lib/prisma"
+
 export type UserRole = "admin" | "warehouse_manager" | "sales_person"
 
 export interface User {
   id: string
-  name: string
   email: string
+  fullName: string
   role: UserRole
+  department?: string
+  status: string
 }
 
 export const checkAccess = (userRole: UserRole, requiredRole: UserRole[]): boolean => {
@@ -15,9 +21,9 @@ export const checkAccess = (userRole: UserRole, requiredRole: UserRole[]): boole
 export const getDefaultRoute = (role: UserRole): string => {
   switch (role) {
     case "admin":
-      return "/dashboard"
+      return "/admin/dashboard"
     case "warehouse_manager":
-      return "/warehouses"
+      return "/warehouse/dashboard"
     case "sales_person":
       return "/pos"
     default:
@@ -25,3 +31,42 @@ export const getDefaultRoute = (role: UserRole): string => {
   }
 }
 
+const SECRET_KEY = process.env.JWT_SECRET || "your-secret-key" // Use environment variable in production
+
+export const verifySession = (token: string): string | null => {
+  try {
+    const decoded = jwt.verify(token, SECRET_KEY) as { userId: string }
+    return decoded.userId // Return the user ID from the token
+  } catch (error) {
+    console.error("Invalid session token:", error)
+    return null
+  }
+}
+
+export const createSession = (userId: string): string => {
+  return jwt.sign({ userId }, SECRET_KEY, { expiresIn: "7d" })
+}
+
+export const getCurrentUser = async (): Promise<User | null> => {
+  const userSession = cookies().get("user_session")?.value
+
+  if (!userSession) return null
+
+  const userId = verifySession(userSession)
+  if (!userId) return null
+
+  try {
+    const user = await prisma.oUR_USER.findUnique({
+      where: { id: userId },
+    })
+
+    if (!user) return null
+
+    // Return user without sensitive information
+    const { password, ...safeUser } = user
+    return safeUser as User
+  } catch (error) {
+    console.error("Error fetching current user:", error)
+    return null
+  }
+}

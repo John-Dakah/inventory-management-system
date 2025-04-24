@@ -3,8 +3,8 @@ import { Package2Icon, TruckIcon, Users2Icon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { StockAreaChart } from "@/components/charts/area-chart"
-import { WarehouseBarChart } from "@/components/charts/bar-chart"
+import StockAreaChart from "@/components/charts/area-chart"
+import WarehouseBarChart  from "@/components/charts/bar-chart"
 import {
   getDashboardStats,
   getRecentActivity,

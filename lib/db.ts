@@ -1,5 +1,9 @@
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
-
+export async function getUserById(userId: string): Promise<User | null> {
+  const db = await getDB(); // Ensure `getDB` initializes IndexedDB
+  const user = await db.get("users", userId);
+  return user || null; // Return the user or null if not found
+}
 interface ProductDBSchema extends DBSchema {
   products: {
     key: string;
@@ -143,6 +147,18 @@ export async function getSupplierStats(): Promise<{
   stats.activePercentage = Math.round((stats.active / stats.total) * 100);
 
   return stats;
+}
+export async function updateUserProfile(userId: string, data: Partial<User>): Promise<User> {
+  const db = await getDB();
+  const user = await db.get("users", userId);
+
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  const updatedUser = { ...user, ...data, updatedAt: new Date().toISOString() };
+  await db.put("users", updatedUser);
+  return updatedUser;
 }
 export async function getSupplierNames(): Promise<string[]> {
   const db = await getDB();
