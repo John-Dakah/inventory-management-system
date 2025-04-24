@@ -3,8 +3,8 @@ import { Package2Icon, TruckIcon, Users2Icon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { StockAreaChart } from "@/components/charts/area-chart"
-import { WarehouseBarChart } from "@/components/charts/bar-chart"
+import  StockAreaChart  from "@/components/charts/area-chart"
+import  WarehouseBarChart  from "@/components/charts/bar-chart"
 import {
   getDashboardStats,
   getRecentActivity,
@@ -15,6 +15,23 @@ import {
   getNewSuppliersThisMonth,
 } from "@/lib/dashboard"
 import { DashboardActions } from "@/components/dashboard/dashboard-actions"
+
+// Define the RecentActivity type
+interface RecentActivity {
+  id: string;
+  type: string;
+  description: string;
+  value: string;
+}
+
+// Define the LowStockItem type
+interface LowStockItem {
+  id: string;
+  name: string;
+  currentStock: number;
+  threshold: number;
+  status: "Critical" | "Warning" | "Normal";
+}
 
 export default async function DashboardPage() {
   // Fetch all the data needed for the dashboard
@@ -96,29 +113,29 @@ export default async function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-8">
-              {recentActivity.length > 0 ? (
-                recentActivity.map((activity) => (
+                {recentActivity.length > 0 ? (
+                recentActivity.map((activity: RecentActivity) => (
                   <div key={activity.id} className="flex items-center">
-                    <div className="mr-4 space-y-1">
-                      <p className="text-sm font-medium leading-none">{activity.type}</p>
-                      <p className="text-sm text-muted-foreground">{activity.description}</p>
-                    </div>
-                    <div
-                      className={`ml-auto font-medium ${
-                        activity.value.startsWith("+")
-                          ? "text-green-600"
-                          : activity.value.startsWith("-")
-                            ? "text-destructive"
-                            : ""
-                      }`}
-                    >
-                      {activity.value}
-                    </div>
+                  <div className="mr-4 space-y-1">
+                    <p className="text-sm font-medium leading-none">{activity.type}</p>
+                    <p className="text-sm text-muted-foreground">{activity.description}</p>
+                  </div>
+                  <div
+                    className={`ml-auto font-medium ${
+                    activity.value.startsWith("+")
+                      ? "text-green-600"
+                      : activity.value.startsWith("-")
+                      ? "text-destructive"
+                      : ""
+                    }`}
+                  >
+                    {activity.value}
+                  </div>
                   </div>
                 ))
-              ) : (
+                ) : (
                 <div className="text-center py-4 text-muted-foreground">No recent activity found</div>
-              )}
+                )}
             </div>
           </CardContent>
         </Card>
@@ -141,29 +158,29 @@ export default async function DashboardPage() {
               </TableHeader>
               <TableBody>
                 {lowStockItems.length > 0 ? (
-                  lowStockItems.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell>{item.name}</TableCell>
-                      <TableCell>{item.currentStock}</TableCell>
-                      <TableCell>{item.threshold}</TableCell>
-                      <TableCell
-                        className={
-                          item.status === "Critical"
-                            ? "text-destructive"
-                            : item.status === "Warning"
-                              ? "text-amber-500"
-                              : ""
-                        }
-                      >
-                        {item.status}
-                      </TableCell>
-                    </TableRow>
+                  lowStockItems.map((item: LowStockItem) => (
+                  <TableRow key={item.id}>
+                    <TableCell>{item.name}</TableCell>
+                    <TableCell>{item.currentStock}</TableCell>
+                    <TableCell>{item.threshold}</TableCell>
+                    <TableCell
+                    className={
+                      item.status === "Critical"
+                      ? "text-destructive"
+                      : item.status === "Warning"
+                        ? "text-amber-500"
+                        : ""
+                    }
+                    >
+                    {item.status}
+                    </TableCell>
+                  </TableRow>
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center py-4 text-muted-foreground">
-                      No low stock items found
-                    </TableCell>
+                  <TableCell colSpan={4} className="text-center py-4 text-muted-foreground">
+                    No low stock items found
+                  </TableCell>
                   </TableRow>
                 )}
               </TableBody>
