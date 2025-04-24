@@ -1,5 +1,5 @@
 "use client"
-
+import {getDatabase} from './db-utils'
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -152,5 +152,17 @@ export function SyncManager() {
       </CardFooter>
     </Card>
   )
+}
+// sync-manager.ts
+
+export async function addToSyncQueue(entry: {
+  id: string
+  type: string
+  operation: "create" | "update" | "delete"
+  data: any
+  timestamp: number
+}) {
+  const db = await getDatabase()
+  await db.put("syncQueue", entry)
 }
 

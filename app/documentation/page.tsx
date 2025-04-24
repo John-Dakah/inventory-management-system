@@ -701,7 +701,7 @@ export default function DocumentationPage() {
                   size="lg"
                   asChild
                 >
-                  <Link href="/request-demo">Request a Demo</Link>
+                  {/* <Link href="/request-demo">Request a Demo</Link> */}
                 </Button>
               </div>
             </div>

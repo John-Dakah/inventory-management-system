@@ -31,6 +31,10 @@ export async function getSupplierStats() {
     inactive,
   }
 }
+export async function getSupplierNames(): Promise<string[]> {
+  const suppliers = await getSuppliers()
+  return suppliers.map((s) => s.name)
+}
 
 async function getNewSuppliersThisMonth(): Promise<number> {
   const now = new Date()

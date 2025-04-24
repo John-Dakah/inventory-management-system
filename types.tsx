@@ -1,4 +1,43 @@
 export type SyncStatus = "synced" | "pending" | "error" | "new"
+// types.ts
+
+export interface Product {
+  id: string
+  name: string
+  sku: string
+  category?: string
+  quantity: number
+  location: string
+  status: string
+  type: string
+  updatedAt: string
+  createdAt: string
+}
+
+export interface StockItem {
+  id: string
+  name: string
+  sku: string
+  category: string
+  location: string
+  status: string
+  type: string
+  createdAt: string
+}
+
+export interface StockTransaction {
+  id: string
+  stockItemId: string
+  type: "RECEIVE" | "ISSUE"
+  quantity: number
+  previousQuantity: number
+  newQuantity: number
+  location: string
+  reference?: string
+  reason?: string
+  notes?: string
+  createdAt: Date
+}
 
 export interface Supplier {
   id: string
