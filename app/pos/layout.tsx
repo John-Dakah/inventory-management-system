@@ -1,23 +1,29 @@
-import type React from "react"
-import { SidebarProvider } from "@/components/ui/sidebar"
-import { AppSidebar } from "@/components/app-sidebar"
-import { Header } from "@/components/header"
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import { ThemeProvider } from "@/components/theme-provider";
+import { Toaster } from "@/components/ui/toaster";
+import { AuthProvider } from "@/lib/auth-context";
+import { POSLayout } from "@/components/pos-layout";
 
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+import "@/styles/globals.css";
+
+const inter = Inter({ subsets: ["latin"] });
+
+export const metadata: Metadata = {
+  title: "Retail Management System",
+  description: "Complete retail management solution",
+  generator: "v0.dev",
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <SidebarProvider>
-      <div className="flex min-h-screen">
-        <AppSidebar />
-        <div className="flex-1">
-          <Header />
-          <main className="container mx-auto p-4 md:p-6">{children}</main>
-        </div>
-      </div>
-    </SidebarProvider>
-  )
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+      <AuthProvider>
+        <POSLayout>
+          {children}
+          <Toaster />
+        </POSLayout>
+      </AuthProvider>
+    </ThemeProvider>
+  );
 }
-

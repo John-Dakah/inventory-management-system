@@ -1,5 +1,9 @@
-"use client"
+import DashboardClient from "./dashboard-client"
 
+<<<<<<< HEAD
+export default function DashboardPage() {
+  return <DashboardClient />
+=======
 import type React from "react"
 
 import { useState, useEffect, useCallback } from "react"
@@ -615,4 +619,5 @@ export default function POSPage() {
       />
     </div>
   )
+>>>>>>> cb0f898b11ab212038493cef216eac2cd0a7320a
 }
