@@ -31,7 +31,7 @@ export const getDefaultRoute = (role: UserRole): string => {
   }
 }
 
-const SECRET_KEY = process.env.JWT_SECRET || "your-secret-key" // Use environment variable in production
+const SECRET_KEY = process.env.JWT_SECRET || 23 // Use environment variable in production
 
 export const verifySession = (token: string): string | null => {
   try {
