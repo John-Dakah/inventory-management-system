@@ -20,91 +20,43 @@ export type UserFilter = {
 };
 
 // Get all users with optional filtering
-export async function getUsers(filters?: UserFilter) {
-  try {
-    const where: any = {};
-
-    if (filters?.search) {
-      where.OR = [
-        { fullName: { contains: filters.search, mode: "insensitive" } },
-        { email: { contains: filters.search, mode: "insensitive" } },
-        { department: { contains: filters.search, mode: "insensitive" } },
-      ];
-    }
-
-    if (filters?.role && filters.role !== "All") {
-      where.role = filters.role;
-    }
-
-    if (filters?.status && filters.status !== "All") {
-      where.status = filters.status;
-    }
-
-    const users = await prisma.oUR_USER.findMany({
-      where,
-      orderBy: {
-        createdAt: "desc",
-      },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        department: true,
-        status: true,
-        role: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-
-    return users;
-  } catch (error) {
-    console.error("Failed to fetch users:", error);
-    throw new Error("Failed to fetch users");
-  }
+export async function getUsers(adminId: string) {
+  return prisma.oUR_USER.findMany({
+    where: {
+      createdById: adminId,
+      NOT: { id: adminId },
+    },
+    select: {
+      id: true,
+      email: true,
+      fullName: true,
+      department: true,
+      status: true,
+      role: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
 }
+
+// in user-actions.ts
 
 // Get user statistics
-export async function getUserStats() {
-  try {
-    const total = await prisma.oUR_USER.count();
-    const active = await prisma.oUR_USER.count({ where: { status: "ACTIVE" } });
-    const inactive = await prisma.oUR_USER.count({ where: { status: "INACTIVE" } });
-    const admins = await prisma.oUR_USER.count({ where: { role: "admin" } });
-    const warehouseManagers = await prisma.oUR_USER.count({ where: { role: "warehouse_manager" } });
-    const salesPersons = await prisma.oUR_USER.count({ where: { role: "sales_person" } });
+export async function getUserStats(adminId: string) {
+  const users = await prisma.oUR_USER.findMany({
+    where: { createdById: adminId },
+  });
 
-    const departmentsResult = await prisma.oUR_USER.findMany({
-      select: { department: true },
-      where: { department: { not: null } },
-      distinct: ["department"],
-    });
+  const total = users.length;
+  const active = users.filter((user) => user.status === "ACTIVE").length;
+  const inactive = users.filter((user) => user.status === "INACTIVE").length;
+  const admins = users.filter((user) => user.role === "admin").length;
+  const warehouseManagers = users.filter((user) => user.role === "warehouse_manager").length;
+  const salesPersons = users.filter((user) => user.role === "sales_person").length;
+  const departments = [...new Set(users.map((user) => user.department).filter(Boolean))];
 
-    const departments = departmentsResult.map((d) => d.department).filter(Boolean);
-
-    return {
-      total,
-      active,
-      inactive,
-      admins,
-      warehouseManagers,
-      salesPersons,
-      departments,
-    };
-  } catch (error) {
-    console.error("Failed to fetch user stats:", error);
-    return {
-      total: 0,
-      active: 0,
-      inactive: 0,
-      admins: 0,
-      warehouseManagers: 0,
-      salesPersons: 0,
-      departments: [],
-    };
-  }
+  return { total, active, inactive, admins, warehouseManagers, salesPersons, departments };
 }
-
 // Add a new user
 export async function addUser(data: UserFormData) {
   try {
