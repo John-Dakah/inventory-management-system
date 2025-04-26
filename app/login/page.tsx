@@ -81,7 +81,7 @@ export default function LoginPage() {
         router.push("/warehouse/dashboard")
       }
        else {
-        router.push("/pos")
+        router.push("/admin/dashboard")
       }
     }
      catch (error) {
