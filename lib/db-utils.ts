@@ -66,12 +66,12 @@ export async function getFromStore<T>(storeName: string, id: string): Promise<T 
   return db.get(storeName, id)
 }
 
-export async function addToStore<T>(storeName: string, item: T): Promise<string> {
+export async function addToStore<T>(storeName: string, item: T): Promise<IDBValidKey> {
   const db = await getDatabase()
   return db.add(storeName, item)
 }
 
-export async function putToStore<T>(storeName: string, item: T): Promise<string> {
+export async function putToStore<T>(storeName: string, item: T): Promise<IDBValidKey> {
   const db = await getDatabase()
   return db.put(storeName, item)
 }
