@@ -112,6 +112,7 @@ export function ProductForm({
     setIsSubmitting(true)
     try {
       const now = new Date().toISOString()
+      const timestamp = Date.now()
 
       // Create or update product
       const product: Product = isEditing
@@ -120,6 +121,7 @@ export function ProductForm({
             ...data,
             updatedAt: now,
             syncStatus: "pending",
+            modified: timestamp,
           }
         : {
             id: uuidv4(),
@@ -128,13 +130,25 @@ export function ProductForm({
             createdAt: now,
             updatedAt: now,
             syncStatus: "pending",
+            modified: timestamp,
           }
 
-      // Save to IndexedDB
+      // Save to IndexedDB and add to sync queue
       await saveProduct(product)
 
       // Notify parent component
       onProductSaved(product)
+
+      // Trigger sync if online
+      if (isOnline) {
+        try {
+          // Import dynamically to avoid circular dependencies
+          const { forceSync } = await import("@/lib/sync-service")
+          forceSync().catch((err) => console.error("Error triggering sync after product save:", err))
+        } catch (error) {
+          console.error("Could not trigger sync:", error)
+        }
+      }
 
       // Show appropriate toast based on network status and operation
       if (isOnline) {
@@ -337,4 +351,3 @@ export function ProductForm({
     </Dialog>
   )
 }
-

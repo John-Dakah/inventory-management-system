@@ -1,452 +1,418 @@
-import { openDB, type DBSchema, type IDBPDatabase } from "idb";
+import { getSuppliers } from "@/app/actions/supplier-actions"
+import {
+  getDB,
+  type Product,
+  type Supplier,
+  type StockItem,
+  type StockTransaction,
+  type User,
+} from "./check-storage-quota"
 
-interface ProductDBSchema extends DBSchema {
-  products: {
-    key: string;
-    value: Product;
-    indexes: {
-      "by-modified": number;
-      "by-sync-status": string;
-    };
-  };
-  suppliers: {
-    key: string;
-    value: Supplier;
-    indexes: {
-      "by-modified": number;
-      "by-sync-status": string;
-      "by-status": string;
-    };
-  };
-  stockItems: {
-    key: string;
-    value: StockItem;
-    indexes: {
-      "by-modified": number;
-      "by-sync-status": string;
-      "by-category": string;
-      "by-location": string;
-      "by-status": string;
-      "by-type": string;
-    };
-  };
-  stockTransactions: {
-    key: string;
-    value: StockTransaction;
-    indexes: {
-      "by-stockItemId": string;
-      "by-type": string;
-      "by-modified": number;
-      "by-sync-status": string;
-      "by-createdAt": string;
-    };
-  };
-  syncQueue: {
-    key: string;
-    value: {
-      id: string;
-      operation: "create" | "update" | "delete";
-      data?: Product | Supplier | StockItem | StockTransaction | User;
-      type: "product" | "supplier" | "stockItem" | "stockTransaction" | "user";
-      timestamp: number;
-    };
-  };
-  users: {
-    key: string;
-    value: User;
-    indexes: {
-      "by-modified": number;
-      "by-sync-status": string;
-      "by-role": string;
-      "by-status": string;
-      "by-email": string;
-    };
-  };
-  categories: {
-    key: string;
-    value: {
-      name: string;
-      createdAt: string;
-    };
-  };
-  transactions: {
-    key: string;
-    value: any;
-  };
-}
+// Re-export types from check-storage-quota
+export type { Product, Supplier, StockItem, StockTransaction, User }
 
-export interface Product {
-  id: string;
-  name: string;
-  description?: string;
-  sku: string;
-  price: number;
-  quantity: number;
-  category?: string;
-  vendor?: string;
-  weight?: string;
-  imageUrl?: string;
-  createdAt: string;
-  updatedAt: string;
-  syncStatus?: "pending" | "synced" | "error";
-  modified?: number;
-}
-export async function checkStorageQuota(): Promise<{ used: number; total: number; percentUsed: number }> {
-  // Example implementation
-  const quota = await navigator.storage.estimate();
-  const used = quota.usage || 0;
-  const total = quota.quota || 0;
-  const percentUsed = (used / total) * 100;
+// Database state management
+let dbInitialized = false
+const DB_VERSION = 3 // Increment when schema changes
 
-  return { used, total, percentUsed };
-}
-export async function getStockStats(): Promise<{
-  totalItems: number;
-  lowStockItems: number;
-  outOfStockItems: number;
-}> {
-  const db = await getDB();
-  const products = await db.getAll("products");
-
-  const totalItems = products.length;
-  const lowStockItems = products.filter((product) => product.quantity > 0 && product.quantity <= 10).length;
-  const outOfStockItems = products.filter((product) => product.quantity === 0).length;
-
-  return { totalItems, lowStockItems, outOfStockItems };
-}
-export async function getSuppliers(): Promise<Supplier[]> {
-  const db = await getDB(); // Assuming `getDB` initializes IndexedDB
-  const suppliers = await db.getAll("suppliers"); // Replace "suppliers" with your actual store name
-  return suppliers;
-}
-export async function getSupplierStats(): Promise<{
-  total: number;
-  active: number;
-  newThisMonth: number;
-  activePercentage: number;
-  onHold: number;
-  inactive: number;
-}> {
-  const suppliers = await getSuppliers();
-
-  const now = new Date();
-  const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-
-  const stats = {
-    total: suppliers.length,
-    active: suppliers.filter((s) => s.status === "Active").length,
-    onHold: suppliers.filter((s) => s.status === "On Hold").length,
-    inactive: suppliers.filter((s) => s.status === "Inactive").length,
-    newThisMonth: suppliers.filter((s) => new Date(s.createdAt) >= firstDayOfMonth).length,
-  };
-
-  stats.activePercentage = Math.round((stats.active / stats.total) * 100);
-
-  return stats;
-}
-export async function getSupplierNames(): Promise<string[]> {
-  const db = await getDB();
-  const suppliers = await db.getAll("suppliers");
-
-  return suppliers.map((supplier) => supplier.name);
-}
-export async function getStockItems(filters?: { statuses?: string[] }): Promise<StockItem[]> {
-  const db = await getDB();
-  const stockItems = await db.getAll("stockItems");
-
-  // Apply filters if provided
-  if (filters?.statuses && filters.statuses.length > 0) {
-    return stockItems.filter((item) => filters.statuses!.includes(item.status));
-  }
-
-  return stockItems;
-}
-export async function saveStockItem(stockItem: StockItem): Promise<void> {
-  const db = await getDB();
-  const transaction = db.transaction("stockItems", "readwrite");
-  const store = transaction.objectStore("stockItems");
-  store.put(stockItem);
-  await transaction.done;
-}
-export async function recordStockTransaction(transaction: StockTransaction): Promise<void> {
-  const db = await getDB();
-  const tx = db.transaction(["stockItems", "stockTransactions"], "readwrite");
-
-  // Update the stock item
-  const stockItemStore = tx.objectStore("stockItems");
-  const stockItem = await stockItemStore.get(transaction.stockItemId);
-  if (!stockItem) {
-    throw new Error("Stock item not found");
-  }
-  stockItem.quantity = transaction.newQuantity;
-  stockItem.lastUpdated = new Date().toISOString();
-  stockItemStore.put(stockItem);
-
-  // Record the transaction
-  const transactionStore = tx.objectStore("stockTransactions");
-  transactionStore.put(transaction);
-
-  await tx.done;
-}
-export async function getStockTransactions(): Promise<StockTransaction[]> {
-  const db = await getDB();
-  return db.getAll("stockTransactions");
-}
-export async function getProductStats(): Promise<{
-  total: number;
-  categories: string[];
-}> {
-  const db = await getDB();
-  const products = await db.getAll("products");
-
-  const total = products.length;
-  const categories = Array.from(new Set(products.map((product) => product.category).filter(Boolean)));
-
-  return { total, categories };
-}
-export interface Supplier {
-  id: string;
-  name: string;
-  contactPerson: string;
-  email: string;
-  phone: string;
-  products: string;
-  status: "Active" | "Inactive" | "On Hold";
-  createdAt: string;
-  updatedAt: string;
-  syncStatus?: "pending" | "synced" | "error";
-  modified?: number;
-}
-
-export interface StockItem {
-  id: string;
-  name: string;
-  sku: string;
-  category: string;
-  quantity: number;
-  location: string;
-  status: "In Stock" | "Low Stock" | "Out of Stock";
-  lastUpdated: string;
-  type: "Finished Good" | "Raw Material";
-  createdAt: string;
-  updatedAt: string;
-  syncStatus?: "pending" | "synced" | "error";
-  modified?: number;
-}
-
-export interface StockTransaction {
-  id: string;
-  stockItemId: string;
-  type: "in" | "out" | "adjustment";
-  quantity: number;
-  previousQuantity: number;
-  newQuantity: number;
-  location: string;
-  reference?: string;
-  reason?: string;
-  notes?: string;
-  createdAt: string;
-  syncStatus?: "pending" | "synced" | "error";
-  modified?: number;
-}
-
-export interface User {
-  id: string;
-  email: string;
-  password: string;
-  fullName: string;
-  department?: string;
-  status: "ACTIVE" | "INACTIVE";
-  role: "admin" | "warehouse_manager" | "sales_person";
-  createdAt: string;
-  updatedAt: string;
-  syncStatus?: "pending" | "synced" | "error";
-  modified?: number;
-}
-
-let dbPromise: Promise<IDBPDatabase<ProductDBSchema>> | null = null;
-
-// Current database version - increment this when making schema changes
-const CURRENT_DB_VERSION = 4;
-
-export async function getDB(): Promise<IDBPDatabase<ProductDBSchema>> {
-  if (!dbPromise) {
-    dbPromise = openDB<ProductDBSchema>("inventory-db", CURRENT_DB_VERSION, {
-      async upgrade(db, oldVersion, newVersion, transaction) {
-        // Handle incremental upgrades based on oldVersion
-        for (let version = oldVersion + 1; version <= newVersion; version++) {
-          await applySchemaChanges(db, version, transaction);
-        }
-      },
-    });
-  }
-  return dbPromise;
-}
-
-async function applySchemaChanges(
-  db: IDBPDatabase<ProductDBSchema>,
-  version: number,
-  transaction: any
-): Promise<void> {
-  switch (version) {
-    case 1:
-      // Initial schema setup
-      const productStore = db.createObjectStore("products", { keyPath: "id" });
-      productStore.createIndex("by-modified", "modified");
-      productStore.createIndex("by-sync-status", "syncStatus");
-
-      const supplierStore = db.createObjectStore("suppliers", { keyPath: "id" });
-      supplierStore.createIndex("by-modified", "modified");
-      supplierStore.createIndex("by-sync-status", "syncStatus");
-      supplierStore.createIndex("by-status", "status");
-
-      const stockItemStore = db.createObjectStore("stockItems", { keyPath: "id" });
-      stockItemStore.createIndex("by-modified", "modified");
-      stockItemStore.createIndex("by-sync-status", "syncStatus");
-      stockItemStore.createIndex("by-category", "category");
-      stockItemStore.createIndex("by-location", "location");
-      stockItemStore.createIndex("by-status", "status");
-      stockItemStore.createIndex("by-type", "type");
-
-      const stockTransactionStore = db.createObjectStore("stockTransactions", { keyPath: "id" });
-      stockTransactionStore.createIndex("by-stockItemId", "stockItemId");
-      stockTransactionStore.createIndex("by-type", "type");
-      stockTransactionStore.createIndex("by-modified", "modified");
-      stockTransactionStore.createIndex("by-sync-status", "syncStatus");
-      stockTransactionStore.createIndex("by-createdAt", "createdAt");
-
-      db.createObjectStore("syncQueue", { keyPath: "id" });
-
-      const userStore = db.createObjectStore("users", { keyPath: "id" });
-      userStore.createIndex("by-modified", "modified");
-      userStore.createIndex("by-sync-status", "syncStatus");
-      userStore.createIndex("by-role", "role");
-      userStore.createIndex("by-status", "status");
-      userStore.createIndex("by-email", "email", { unique: true });
-
-      db.createObjectStore("categories", { keyPath: "name" });
-      db.createObjectStore("transactions", { keyPath: "id", autoIncrement: true });
-      break;
-
-    case 2:
-      // Version 2 schema changes
-      // Example: Add new index to products
-      const products = transaction.objectStore("products");
-      if (!products.indexNames.contains("by-category")) {
-        products.createIndex("by-category", "category");
-      }
-      break;
-
-    case 3:
-      // Version 3 schema changes
-      // Example: Add new object store
-      if (!db.objectStoreNames.contains("auditLog")) {
-        db.createObjectStore("auditLog", { keyPath: "id", autoIncrement: true });
-      }
-      break;
-
-    case 4:
-      // Version 4 schema changes
-      // Example: Modify existing store
-      const stockItems = transaction.objectStore("stockItems");
-      if (!stockItems.indexNames.contains("by-vendor")) {
-        stockItems.createIndex("by-vendor", "vendor");
-      }
-      break;
-
-    // Add more cases for future versions
-    default:
-      console.warn(`Unknown database version: ${version}`);
+// Ensure database is properly initialized
+export async function ensureDBInitialized() {
+  if (!dbInitialized) {
+    try {
+      await getDB() // This should trigger any needed upgrades
+      dbInitialized = true
+      console.log("Database initialized successfully")
+    } catch (error) {
+      console.error("Database initialization failed:", error)
+      throw error
+    }
   }
 }
 
-// Helper function to get current database version
-async function getCurrentDBVersion(): Promise<number> {
+// Verify store exists helper
+function verifyStoreExists(db: IDBDatabase, storeName: string) {
+  if (!db.objectStoreNames.contains(storeName)) {
+    throw new Error(`Store ${storeName} does not exist`)
+  }
+}
+
+// Wrapper for database operations
+async function withDB<T>(
+  storeNames: string[],
+  mode: IDBTransactionMode,
+  operation: (tx: IDBTransaction) => Promise<T>
+): Promise<T> {
+  await ensureDBInitialized()
+  const db = await getDB()
+  
+  storeNames.forEach(store => verifyStoreExists(db, store))
+  
+  const tx = db.transaction(storeNames, mode)
   try {
-    const databases = await indexedDB.databases();
-    const dbInfo = databases.find(db => db.name === "inventory-db");
-    return dbInfo ? dbInfo.version : 1;
+    const result = await operation(tx)
+    await tx.done
+    return result
   } catch (error) {
-    console.error("Error getting current DB version:", error);
-    return 1;
+    tx.abort()
+    throw error
   }
 }
 
-// CRUD Operations (simplified examples - include all your existing operations)
+// AUDIT LOG FUNCTIONS
+export async function addAuditLogEntry(entry: {
+  action: string
+  entityType: string
+  entityId?: string
+  details?: any
+  userId?: string
+}): Promise<number> {
+  return withDB(['auditLog'], 'readwrite', async (tx) => {
+    const store = tx.objectStore('auditLog')
+    const timestamp = Date.now()
+    const fullEntry = {
+      ...entry,
+      timestamp,
+      userId: entry.userId || 'system'
+    }
+    const request = store.add(fullEntry)
+    return new Promise<number>((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result as number)
+      request.onerror = () => reject(request.error)
+    })
+  })
+}
 
+export async function getAuditLogs(limit = 100): Promise<any[]> {
+  return withDB(['auditLog'], 'readonly', async (tx) => {
+    const store = tx.objectStore('auditLog')
+    const index = store.index('by_timestamp')
+    const request = index.getAll(null, limit)
+    return new Promise<any[]>((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+  })
+}
+
+// PRODUCT FUNCTIONS
 export async function saveProduct(product: Product): Promise<string> {
-  const db = await getDB();
-  
-  // Set modified timestamp and sync status
-  const now = Date.now();
-  product.modified = now;
-  product.syncStatus = "pending";
+  try {
+    const now = Date.now()
+    
+    // Set metadata
+    if (!product.id) product.id = generateId()
+    if (!product.createdAt) product.createdAt = new Date().toISOString()
+    product.updatedAt = new Date().toISOString()
+    product.modified = now
+    product.syncStatus = product.syncStatus || 'pending'
 
-  await db.put("products", product);
-  
-  // Add to sync queue
-  await db.put("syncQueue", {
-    id: `product-${product.id}-${now}`,
-    operation: product.id ? "update" : "create",
-    data: product,
-    type: "product",
-    timestamp: now,
-  });
+    await withDB(['products', 'syncQueue'], 'readwrite', async (tx) => {
+      // Save product
+      await tx.objectStore('products').put(product)
 
-  return product.id;
-}
+      // Add to sync queue
+      await tx.objectStore('syncQueue').put({
+        id: `product-${product.id}-${now}`,
+        operation: 'upsert',
+        data: product,
+        type: 'product',
+        timestamp: now,
+      })
+    })
 
-export async function getProduct(id: string): Promise<Product | undefined> {
-  const db = await getDB();
-  return db.get("products", id);
-}
+    // Audit log
+    await addAuditLogEntry({
+      action: 'save',
+      entityType: 'product',
+      entityId: product.id,
+      details: { sku: product.sku }
+    })
 
-export async function getProducts(): Promise<Product[]> {
-  const db = await getDB();
-  return db.getAll("products");
+    return product.id
+  } catch (error) {
+    await addAuditLogEntry({
+      action: 'error',
+      entityType: 'product',
+      details: { 
+        error: error instanceof Error ? error.message : String(error),
+        operation: 'saveProduct' 
+      }
+    })
+    throw error
+  }
 }
 
 export async function deleteProduct(id: string): Promise<void> {
-  const db = await getDB();
-  await db.delete("products", id);
-  
-  // Add to sync queue
-  await db.put("syncQueue", {
-    id: `product-delete-${id}-${Date.now()}`,
-    operation: "delete",
-    type: "product",
-    timestamp: Date.now(),
-  });
-}
-
-// Similar CRUD operations for other entities (suppliers, stockItems, users, etc.)
-// Include all your existing operations here...
-
-// Sync Operations
-export async function getPendingSyncItems() {
-  const db = await getDB();
-  return db.getAll("syncQueue");
-}
-
-export async function markAsSynced(id: string, type: "product" | "supplier" | "stockItem" | "stockTransaction" | "user") {
-  const db = await getDB();
-  
-  // Update the entity's sync status
-  await db.put(type + "s", {
-    ...(await db.get(type + "s", id)),
-    syncStatus: "synced"
-  });
-  
-  // Remove from sync queue
-  await db.delete("syncQueue", id);
-}
-
-// Initialize database on module load
-(async () => {
   try {
-    await getDB();
-    console.log("IndexedDB initialized successfully");
+    const now = Date.now()
+
+    await withDB(['products', 'syncQueue'], 'readwrite', async (tx) => {
+      // Delete product
+      await tx.objectStore('products').delete(id)
+
+      // Add to sync queue
+      await tx.objectStore('syncQueue').put({
+        id: `product-delete-${id}-${now}`,
+        operation: 'delete',
+        type: 'product',
+        data: { id },
+        timestamp: now,
+      })
+    })
+
+    // Audit log
+    await addAuditLogEntry({
+      action: 'delete',
+      entityType: 'product',
+      entityId: id
+    })
   } catch (error) {
-    console.error("Error initializing IndexedDB:", error);
+    await addAuditLogEntry({
+      action: 'error',
+      entityType: 'product',
+      details: { 
+        error: error instanceof Error ? error.message : String(error),
+        operation: 'deleteProduct' 
+      }
+    })
+    throw error
   }
-})();
+}
+
+export async function getProducts(): Promise<Product[]> {
+  return withDB(['products'], 'readonly', async (tx) => {
+    const request = tx.objectStore('products').getAll()
+    return new Promise<Product[]>((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result as unknown as Product[])
+      request.onerror = () => reject(request.error)
+    })
+  })
+}
+export async function getProductById(id: string): Promise<Product | null> {
+  return withDB(['products'], 'readonly', async (tx) => {
+    const request = tx.objectStore('products').get(id)
+    return new Promise<Product | null>((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result as unknown as Product | null)
+      request.onerror = () => reject(request.error)
+    })
+  })}
+// STOCK FUNCTIONS
+export async function saveStockItem(stockItem: StockItem): Promise<void> {
+  try {
+    const now = Date.now()
+    stockItem.modified = now
+    stockItem.syncStatus = 'pending'
+
+    await withDB(['stockItems', 'syncQueue'], 'readwrite', async (tx) => {
+      await tx.objectStore('stockItems').put(stockItem)
+      await tx.objectStore('syncQueue').put({
+        id: `stockItem-${stockItem.id}-${now}`,
+        operation: stockItem.id ? 'update' : 'create',
+        data: stockItem,
+        type: 'stockItem',
+        timestamp: now,
+      })
+    })
+
+    await addAuditLogEntry({
+      action: stockItem.id ? 'update' : 'create',
+      entityType: 'stockItem',
+      entityId: stockItem.id,
+    })
+  } catch (error) {
+    await addAuditLogEntry({
+      action: 'error',
+      entityType: 'stockItem',
+      details: { error: error instanceof Error ? error.message : String(error) }
+    })
+    throw error
+  }
+}
+
+export async function recordStockTransaction(transaction: StockTransaction): Promise<void> {
+  try {
+    const now = Date.now()
+    transaction.modified = now
+    transaction.syncStatus = 'pending'
+
+    await withDB(
+      ['stockItems', 'stockTransactions', 'syncQueue'], 
+      'readwrite', 
+      async (tx) => {
+        // Update stock item
+        const stockItemRequest = tx.objectStore('stockItems').get(transaction.stockItemId)
+        const stockItem = await new Promise<any>((resolve, reject) => {
+          stockItemRequest.onsuccess = () => resolve(stockItemRequest.result)
+          stockItemRequest.onerror = () => reject(stockItemRequest.error)
+        })
+        if (!stockItem) throw new Error('Stock item not found')
+
+        stockItem.quantity = transaction.newQuantity
+        stockItem.lastUpdated = new Date().toISOString()
+        stockItem.modified = now
+        stockItem.syncStatus = 'pending'
+        await tx.objectStore('stockItems').put(stockItem)
+
+        // Record transaction
+        await tx.objectStore('stockTransactions').put(transaction)
+
+        // Add to sync queue
+        await tx.objectStore('syncQueue').put({
+          id: `stockItem-${stockItem.id}-${now}`,
+          operation: 'update',
+          data: stockItem,
+          type: 'stockItem',
+          timestamp: now,
+        })
+
+        await tx.objectStore('syncQueue').put({
+          id: `stockTransaction-${transaction.id}-${now}`,
+          operation: 'create',
+          data: transaction,
+          type: 'stockTransaction',
+          timestamp: now,
+        })
+      }
+    )
+
+    await addAuditLogEntry({
+      action: 'stockTransaction',
+      entityType: 'stockItem',
+      entityId: transaction.stockItemId,
+      details: {
+        type: transaction.type,
+        quantityChange: transaction.quantityChange
+      }
+    })
+  } catch (error) {
+    await addAuditLogEntry({
+      action: 'error',
+      entityType: 'stockTransaction',
+      details: { error: error instanceof Error ? error.message : String(error) }
+    })
+    throw error
+  }
+}
+
+// STATISTICS FUNCTIONS
+export async function getProductStats() {
+  const products = await getProducts()
+  return {
+    total: products.length,
+    categories: Array.from(new Set(products.map(p => p.category).filter(Boolean)))
+  }
+}
+
+export async function getStockStats() {
+  const products = await getProducts()
+  return {
+    totalItems: products.length,
+    lowStockItems: products.filter(p => p.quantity > 0 && p.quantity <= 10).length,
+    outOfStockItems: products.filter(p => p.quantity === 0).length
+  }
+}
+
+export async function getSupplierStats() {
+  const suppliers = await getSuppliers()
+  const now = new Date()
+  const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+
+  const stats = {
+    total: Array.isArray(suppliers.suppliers) ? suppliers.suppliers.length : 0,
+    active: Array.isArray(suppliers.suppliers) 
+      ? suppliers.suppliers.filter(s => s.status === 'Active').length 
+      : 0,
+    onHold: Array.isArray(suppliers.suppliers) 
+      ? suppliers.suppliers.filter(s => s.status === 'On Hold').length 
+      : 0,
+    inactive: Array.isArray(suppliers.suppliers) 
+      ? suppliers.suppliers.filter(s => s.status === 'Inactive').length 
+      : 0,
+    newThisMonth: Array.isArray(suppliers.suppliers) 
+      ? suppliers.suppliers.filter(s => new Date(s.createdAt) >= firstDayOfMonth).length 
+      : 0,
+    activePercentage: 0,
+  }
+
+  stats.activePercentage = stats.total > 0 
+    ? Math.round((stats.active / stats.total) * 100) 
+    : 0
+
+  return stats
+}
+
+// SYNC FUNCTIONS
+export async function getPendingSyncItems() {
+  return withDB(['syncQueue'], 'readonly', async (tx) => {
+    return tx.objectStore('syncQueue').getAll()
+  })
+}
+
+export async function markAsSynced(
+  id: string,
+  type: "product" | "supplier" | "stockItem" | "stockTransaction"
+) {
+  try {
+    const storeName = `${type}s` as "products" | "suppliers" | "stockItems" | "stockTransactions"
+    
+    await withDB([storeName, 'syncQueue'], 'readwrite', async (tx) => {
+      // Update entity sync status
+      const request = tx.objectStore(storeName).get(id)
+      const entity = await new Promise<any>((resolve, reject) => {
+        request.onsuccess = () => resolve(request.result)
+        request.onerror = () => reject(request.error)
+      })
+      if (entity) {
+        entity.syncStatus = 'synced'
+        await tx.objectStore(storeName).put(entity)
+      }
+
+      // Remove from sync queue
+      const syncQueue = tx.objectStore('syncQueue')
+      let cursorRequest = syncQueue.openCursor()
+      
+      while (cursorRequest) {
+        const cursor = await new Promise<IDBCursorWithValue | null>((resolve, reject) => {
+          cursorRequest.onsuccess = () => resolve(cursorRequest.result)
+          cursorRequest.onerror = () => reject(cursorRequest.error)
+        })
+        if (!cursor) break
+
+        const syncItem = cursor.value
+        if (syncItem.type === type && 
+            (syncItem.data?.id === id || syncItem.id.includes(id))) {
+          await cursor.delete()
+        }
+        cursor.continue()
+      }
+    })
+
+    await addAuditLogEntry({
+      action: 'syncComplete',
+      entityType: type,
+      entityId: id
+    })
+  } catch (error) {
+    await addAuditLogEntry({
+      action: 'syncError',
+      entityType: type,
+      entityId: id,
+      details: { error: error instanceof Error ? error.message : String(error) }
+    })
+    throw error
+  }
+}
+
+// UTILITY FUNCTIONS
+function generateId(): string {
+  return crypto.randomUUID() || Date.now().toString(36) + Math.random().toString(36).substring(2)
+}
+
+// Initialize database on load
+;(async () => {
+  try {
+    await ensureDBInitialized()
+  } catch (error) {
+    console.error("Initialization error:", error)
+  }
+})()

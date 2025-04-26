@@ -43,12 +43,10 @@ import { toast } from "@/components/ui/use-toast"
 import { NetworkStatus } from "@/components/network-status"
 import { SyncManager } from "@/components/sync-manager"
 import {
-  getStockItems,
   getStockStats,
   saveStockItem,
   recordStockTransaction,
   getProducts,
-  getProduct,
   saveProduct, // Import saveProduct
   type StockItem,
   type StockTransaction,
@@ -289,48 +287,44 @@ export default function StockPage() {
         // Record transaction (this will also update the stock item)
         await recordStockTransaction(transaction)
 
-        // Update local state
-        setStockItems((prev) =>
-          prev.map((item) => {
-            if (item.id === stockItem!.id) {
-              const newQuantity = item.quantity + quantity
-              let status = "In Stock"
-              if (newQuantity === 0) status = "Out of Stock"
-              else if (newQuantity <= 10) status = "Low Stock"
+       // Update local state
+setStockItems((prev) =>
+  prev.map((item) => {
+    if (item.id === stockItem!.id) {
+      const newQuantity = item.quantity + quantity;
+      let status: "In Stock" | "Low Stock" | "Out of Stock"; 
 
-              return {
-                ...item,
-                quantity: newQuantity,
-                status,
-                lastUpdated: now,
-              }
-            }
-            return item
-          }),
-        )
+      if (newQuantity === 0) {
+        status = "Out of Stock";
+      } else if (newQuantity <= 10) {
+        status = "Low Stock";
       } else {
-        // Create new stock item
-        const selectedProduct = availableProducts.find((p) => p.id === productId)
+        status = "In Stock";
+      }
 
-        if (!selectedProduct) {
-          toast({
-            variant: "destructive",
-            title: "Error",
-            description: "Selected product not found.",
-          })
-          return
-        }
+      return {
+        ...item,
+        quantity: newQuantity,
+        status, 
+        lastUpdated: now,
+      };
+    }
+    return item;
+  })
+);
 
         // Determine status based on quantity
-        let status = "In Stock"
+        let status: "In Stock" | "Low Stock" | "Out of Stock" = "In Stock"
         if (quantity === 0) status = "Out of Stock"
         else if (quantity <= 10) status = "Low Stock"
 
+        const selectedProduct = availableProducts.find((p) => p.id === productId);
+
         const newStockItem: StockItem = {
           id: uuidv4(),
-          name: selectedProduct.name,
-          sku: selectedProduct.sku,
-          category: selectedProduct.category || "General",
+          name: selectedProduct?.name || "Unknown Product",
+          sku: selectedProduct?.sku || "Unknown SKU",
+          category: selectedProduct?.category || "General",
           quantity: quantity,
           location: stockInForm.location,
           status: status,
@@ -346,8 +340,6 @@ export default function StockPage() {
         // Update local state
         setStockItems((prev) => [newStockItem, ...prev])
 
-        // Add the location to stats if it's new
-    // Add the location to stats if it's new
 if (Array.isArray(stats.locations) && !stats.locations.includes(stockInForm.location)) {
   setStats((prev) => ({
     ...prev,
