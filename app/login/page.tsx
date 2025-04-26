@@ -75,13 +75,13 @@ export default function LoginPage() {
 
       // Redirect based on role
       if (role === "admin"){
-        router.push("/admin/dashboard")
+        router.push("/settings")
       }
      if (role ==="warehouse_manager"){
-        router.push("/warehouse/dashboard")
+        router.push("/warehouse")
       }
-       else {
-        router.push("/admin/dashboard")
+      if (role ==="sales_person"){
+        router.push("/pos")
       }
     }
      catch (error) {
