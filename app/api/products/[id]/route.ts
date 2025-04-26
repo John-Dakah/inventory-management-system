@@ -1,111 +1,126 @@
-import { NextResponse } from "next/server"
-import { Pool } from "pg"
+import { type NextRequest, NextResponse } from "next/server"
+import { PrismaClient } from "@prisma/client"
 
-// Initialize PostgreSQL connection pool
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
-})
+// Initialize Prisma client
+const prisma = new PrismaClient()
 
-// GET product by ID
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+/**
+ * GET handler for fetching a specific product by ID
+ */
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const id = params.id
 
-    const result = await pool.query(
-      `
-      SELECT * FROM products 
-      WHERE id = $1
-    `,
-      [id],
-    )
+    const product = await prisma.product.findUnique({
+      where: { id },
+    })
 
-    if (result.rows.length === 0) {
+    if (!product) {
       return NextResponse.json({ error: "Product not found" }, { status: 404 })
     }
 
-    return NextResponse.json(result.rows[0])
-  } catch (error) {
-    console.error("Error fetching product:", error)
-    return NextResponse.json({ error: "Failed to fetch product" }, { status: 500 })
+    return NextResponse.json({
+      id: product.id,
+      name: product.name,
+      description: product.description || "",
+      sku: product.sku,
+      price: product.price,
+      quantity: product.quantity,
+      category: product.category || "",
+      vendor: product.vendor || "",
+      imageUrl: product.imageUrl || "",
+      createdAt: product.createdAt.toISOString(),
+      updatedAt: product.updatedAt.toISOString(),
+    })
+  } catch (error: any) {
+    console.error(`Error in GET /api/products/${params.id}:`, error)
+    return NextResponse.json({ error: "Failed to fetch product", message: error.message }, { status: 500 })
   }
 }
 
-// PUT update product
-export async function PUT(request: Request, { params }: { params: { id: string } }) {
+/**
+ * PUT handler for updating a product
+ */
+export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const id = params.id
-    const product = await request.json()
+    const data = await request.json()
 
-    // Validate required fields
-    if (!product.name || !product.sku) {
-      return NextResponse.json({ error: "Name and SKU are required" }, { status: 400 })
-    }
+    // Check if the product exists
+    const existingProduct = await prisma.product.findUnique({
+      where: { id },
+    })
 
-    const result = await pool.query(
-      `
-      UPDATE products 
-      SET 
-        name = $1, 
-        sku = $2, 
-        price = $3, 
-        quantity = $4, 
-        category = $5, 
-        vendor = $6, 
-        weight = $7, 
-        description = $8, 
-        "imageUrl" = $9, 
-        "updatedAt" = $10
-      WHERE id = $11
-      RETURNING *
-    `,
-      [
-        product.name,
-        product.sku,
-        product.price,
-        product.quantity,
-        product.category || null,
-        product.vendor || null,
-        product.weight || null,
-        product.description || null,
-        product.imageUrl || null,
-        product.updatedAt,
-        id,
-      ],
-    )
-
-    if (result.rows.length === 0) {
+    if (!existingProduct) {
       return NextResponse.json({ error: "Product not found" }, { status: 404 })
     }
 
-    return NextResponse.json(result.rows[0])
-  } catch (error) {
-    console.error("Error updating product:", error)
-    return NextResponse.json({ error: "Failed to update product" }, { status: 500 })
+    // Update the product
+    const updatedProduct = await prisma.product.update({
+      where: { id },
+      data: {
+        name: data.name,
+        description: data.description,
+        sku: data.sku,
+        price: data.price !== undefined ? data.price : existingProduct.price,
+        quantity: data.quantity !== undefined ? data.quantity : existingProduct.quantity,
+        category: data.category,
+        vendor: data.vendor,
+        imageUrl: data.imageUrl,
+        updatedAt: new Date(),
+      },
+    })
+
+    return NextResponse.json(updatedProduct)
+  } catch (error: any) {
+    console.error(`Error in PUT /api/products/${params.id}:`, error)
+    return NextResponse.json({ error: "Failed to update product", message: error.message }, { status: 500 })
   }
 }
 
-// DELETE product
-export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+/**
+ * DELETE handler for removing a product
+ */
+export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const id = params.id
 
-    const result = await pool.query(
-      `
-      DELETE FROM products 
-      WHERE id = $1
-      RETURNING id
-    `,
-      [id],
-    )
+    // Check if the product exists
+    const existingProduct = await prisma.product.findUnique({
+      where: { id },
+    })
 
-    if (result.rows.length === 0) {
+    if (!existingProduct) {
       return NextResponse.json({ error: "Product not found" }, { status: 404 })
     }
 
-    return NextResponse.json({ id: result.rows[0].id, deleted: true })
-  } catch (error) {
-    console.error("Error deleting product:", error)
-    return NextResponse.json({ error: "Failed to delete product" }, { status: 500 })
+    // Check if there are related stock items
+    const relatedStockItems = await prisma.stockItem.findMany({
+      where: {
+        OR: [{ name: existingProduct.name }, { sku: existingProduct.sku }],
+      },
+      select: { id: true },
+    })
+
+    if (relatedStockItems.length > 0) {
+      return NextResponse.json(
+        {
+          error: "Cannot delete product",
+          message: "This product is associated with stock items and cannot be deleted",
+          relatedItems: relatedStockItems.length,
+        },
+        { status: 409 },
+      )
+    }
+
+    // Delete the product
+    await prisma.product.delete({
+      where: { id },
+    })
+
+    return new Response(null, { status: 204 })
+  } catch (error: any) {
+    console.error(`Error in DELETE /api/products/${params.id}:`, error)
+    return NextResponse.json({ error: "Failed to delete product", message: error.message }, { status: 500 })
   }
 }

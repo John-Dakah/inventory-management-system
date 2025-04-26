@@ -88,6 +88,7 @@ export default function InventoryPage() {
           outOfStock: stockStats.outOfStockItems,
           // Use supplier names from the suppliers page
           vendors: supplierNames,
+          categories: productStats.categories.filter((category): category is string => category !== undefined),
         })
       } catch (error) {
         console.error("Error loading data:", error)
@@ -521,7 +522,7 @@ export default function InventoryPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All stock levels</SelectItem>
-                      <SelectItem value="inStock">In Stock (>10)</SelectItem>
+                      <SelectItem value="inStock">In Stock (10)</SelectItem>
                       <SelectItem value="lowStock">Low Stock (1-10)</SelectItem>
                       <SelectItem value="outOfStock">Out of Stock (0)</SelectItem>
                     </SelectContent>

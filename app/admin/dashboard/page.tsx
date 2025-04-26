@@ -3,13 +3,8 @@ import { Package2Icon, TruckIcon, Users2Icon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-<<<<<<< HEAD
 import StockAreaChart from "@/components/charts/area-chart"
 import WarehouseBarChart  from "@/components/charts/bar-chart"
-=======
-import  StockAreaChart  from "@/components/charts/area-chart"
-import  WarehouseBarChart  from "@/components/charts/bar-chart"
->>>>>>> ac579053e1a706bdcee8d6f04d590864243a8042
 import {
   getDashboardStats,
   getRecentActivity,
@@ -163,23 +158,23 @@ export default async function DashboardPage() {
               </TableHeader>
               <TableBody>
                 {lowStockItems.length > 0 ? (
-                  lowStockItems.map((item: LowStockItem) => (
-                  <TableRow key={item.id}>
-                    <TableCell>{item.name}</TableCell>
-                    <TableCell>{item.currentStock}</TableCell>
-                    <TableCell>{item.threshold}</TableCell>
-                    <TableCell
-                    className={
-                      item.status === "Critical"
-                      ? "text-destructive"
-                      : item.status === "Warning"
-                        ? "text-amber-500"
-                        : ""
-                    }
-                    >
-                    {item.status}
-                    </TableCell>
-                  </TableRow>
+                  lowStockItems.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell>{item.name}</TableCell>
+                      <TableCell>{item.currentStock}</TableCell>
+                      <TableCell>{item.threshold}</TableCell>
+                      <TableCell
+                        className={
+                          item.status === "Critical"
+                            ? "text-destructive"
+                            : item.status === "Warning"
+                            ? "text-amber-500"
+                            : ""
+                        }
+                      >
+                        {item.status as "Critical" | "Warning" | "Normal"}
+                      </TableCell>
+                    </TableRow>
                   ))
                 ) : (
                   <TableRow>
