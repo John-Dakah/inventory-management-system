@@ -1,86 +1,139 @@
 import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { auth } from "@/lib/auth"
+
+// 🔐 Temporarily bypass session auth for development
+async function requireAuth(request: Request) {
+  const session = await auth(request)
+
+  if (!session || !session.user?.id) {
+    console.warn("⚠️ No valid session. Using fallback session for development.")
+    return {
+      user: {
+        id: "dev-user",
+        name: "Developer",
+        email: "dev@example.com",
+      },
+    }
+  }
+
+  return session
+}
 
 export async function GET(request: Request) {
+  const session = await requireAuth(request)
+
   try {
-    // Get recent stock transactions for cash drawer
-    const transactions = await prisma.stockTransaction.findMany({
-      where: {
-        type: { in: ["Cash Sale", "Payout"] },
-      },
-      include: {
-        stockItem: true,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-      take: 50,
+    const openSession = await prisma.registerSession.findFirst({
+      where: { status: "Open", closedAt: null },
+      orderBy: { openedAt: "desc" },
     })
 
-    // Calculate drawer status based on transactions
-    const cashSales = transactions.filter((t) => t.type === "Cash Sale").reduce((sum, t) => sum + t.quantity, 0)
+    const recentTransactions = await prisma.transaction.findMany({
+      take: 50,
+      orderBy: { date: "desc" },
+      include: {
+        items: true,
+        customer: {
+          select: {
+            fullName: true,
+            email: true,
+          },
+        },
+      },
+    })
 
-    const cashPayouts = transactions.filter((t) => t.type === "Payout").reduce((sum, t) => sum + t.quantity, 0)
+    const drawerHistory = await prisma.registerSession.findMany({
+      take: 20,
+      where: { status: "Closed" },
+      orderBy: { closedAt: "desc" },
+    })
 
-    // Assuming opening balance of 200.0 for now
-    // In a real app, this would come from the most recent "Open Drawer" transaction
-    const openingBalance = 200.0
-    const currentBalance = openingBalance + cashSales - cashPayouts
-
-    const drawerStatus = {
-      isOpen: true, // This would normally be stored in the database
-      openedAt: new Date(new Date().setHours(new Date().getHours() - 8)),
-      openingBalance,
-      currentBalance,
-      cashSales,
-      cardSales: 0, // This would come from different transaction types
-      mobileSales: 0, // This would come from different transaction types
-      expectedAmount: openingBalance + cashSales - cashPayouts,
-      cashPayouts,
+    let drawerStatus = {
+      isOpen: false,
+      openedAt: null as Date | null,
+      openingBalance: 0,
+      currentBalance: 0,
+      cashSales: 0,
+      cardSales: 0,
+      mobileSales: 0,
+      expectedAmount: 0,
+      cashPayouts: 0,
     }
 
-    // Format transactions for the UI
-    const formattedTransactions = transactions.map((transaction) => ({
-      id: transaction.id,
-      date: transaction.createdAt,
-      type: transaction.type,
-      amount: transaction.type === "Payout" ? -transaction.quantity : transaction.quantity,
-      reference: transaction.reference || "",
-      notes: transaction.notes || "",
-    }))
+    if (openSession) {
+      const [cashSales, cardSales, mobileSales, cashPayouts] = await Promise.all([
+        prisma.transaction.aggregate({
+          where: {
+            paymentMethod: "Cash",
+            date: { gte: openSession.openedAt },
+            status: "Completed",
+          },
+          _sum: { total: true },
+        }),
+        prisma.transaction.aggregate({
+          where: {
+            paymentMethod: "Card",
+            date: { gte: openSession.openedAt },
+            status: "Completed",
+          },
+          _sum: { total: true },
+        }),
+        prisma.transaction.aggregate({
+          where: {
+            paymentMethod: "Mobile",
+            date: { gte: openSession.openedAt },
+            status: "Completed",
+          },
+          _sum: { total: true },
+        }),
+        prisma.transaction.aggregate({
+          where: {
+            paymentMethod: "Cash",
+            date: { gte: openSession.openedAt },
+            status: "Completed",
+            total: { lt: 0 },
+          },
+          _sum: { total: true },
+        }),
+      ])
 
-    // Get drawer history
-    const drawerHistory = await prisma.stockTransaction.findMany({
-      where: {
-        type: { in: ["Open Drawer", "Close Drawer"] },
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-      take: 10,
-    })
+      const cashSalesTotal = cashSales._sum.total || 0
+      const cashPayoutsTotal = Math.abs(cashPayouts._sum.total || 0)
 
-    // Format drawer history
-    // In a real app, you'd pair opening and closing records
-    const formattedHistory = []
-    for (let i = 0; i < drawerHistory.length; i += 2) {
-      if (i + 1 < drawerHistory.length) {
-        const closeRecord = drawerHistory[i]
-        const openRecord = drawerHistory[i + 1]
-
-        formattedHistory.push({
-          id: closeRecord.id,
-          date: openRecord.createdAt,
-          openedAt: new Date(openRecord.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          closedAt: new Date(closeRecord.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          openingBalance: openRecord.previousQuantity,
-          closingBalance: closeRecord.newQuantity,
-          difference: closeRecord.newQuantity - closeRecord.previousQuantity - openRecord.quantity,
-          status: closeRecord.newQuantity === closeRecord.previousQuantity ? "Balanced" : "Discrepancy",
-          cashier: "System User", // This would come from the user who performed the operation
-        })
+      drawerStatus = {
+        isOpen: true,
+        openedAt: openSession.openedAt,
+        openingBalance: openSession.openingBalance,
+        currentBalance: openSession.openingBalance + cashSalesTotal - cashPayoutsTotal,
+        cashSales: cashSalesTotal,
+        cardSales: cardSales._sum.total || 0,
+        mobileSales: mobileSales._sum.total || 0,
+        expectedAmount: openSession.openingBalance + cashSalesTotal - cashPayoutsTotal,
+        cashPayouts: cashPayoutsTotal,
       }
     }
+
+    const formattedTransactions = recentTransactions.map((t) => ({
+      id: t.id,
+      date: t.date,
+      type: t.total < 0 ? "Cash Payout" : `${t.paymentMethod} Sale`,
+      amount: t.total,
+      reference: t.reference,
+      notes: t.notes || "",
+    }))
+
+    const formattedHistory = drawerHistory.map((s) => ({
+      id: s.id,
+      date: s.openedAt,
+      openedAt: s.openedAt.toLocaleTimeString(),
+      closedAt: s.closedAt ? s.closedAt.toLocaleTimeString() : "N/A",
+      openingBalance: s.openingBalance,
+      closingBalance: s.closingBalance || 0,
+      difference: (s.closingBalance || 0) - s.openingBalance,
+      status: s.status,
+      cashier: s.cashierName || "Unknown",
+    }))
 
     return NextResponse.json({
       drawerStatus,
@@ -89,152 +142,129 @@ export async function GET(request: Request) {
     })
   } catch (error) {
     console.error("Error fetching cash drawer data:", error)
-    return NextResponse.json({ error: "Failed to fetch cash drawer data" }, { status: 500 })
+    return NextResponse.json({ error: "Failed to fetch cash drawer data", details: String(error) }, { status: 500 })
   }
 }
 
 export async function POST(request: Request) {
+  const session = await requireAuth(request)
+
   try {
     const data = await request.json()
-    const { action, amount, reason, reference, notes } = data
+    const { action, amount, reason, reference } = data
 
     if (action === "open") {
-      // Create a new "Open Drawer" transaction
-      const transaction = await prisma.stockItem.update({
-        where: {
-          sku: "CASH_DRAWER", // You would need a stock item representing your cash drawer
-        },
-        data: {
-          quantity: amount,
-          lastUpdated: new Date(),
-          transactions: {
-            create: {
-              type: "Open Drawer",
-              quantity: amount,
-              previousQuantity: 0,
-              newQuantity: amount,
-              location: "Main Register",
-              reference: reference || "Opening Balance",
-              notes: notes || "Cash drawer opened",
-            },
-          },
-        },
-        include: {
-          transactions: {
-            orderBy: {
-              createdAt: "desc",
-            },
-            take: 1,
-          },
-        },
+      const openDrawer = await prisma.registerSession.findFirst({
+        where: { status: "Open", closedAt: null },
       })
 
-      return NextResponse.json({
-        success: true,
-        message: "Cash drawer opened successfully",
-        transaction: transaction.transactions[0],
-      })
-    } else if (action === "close") {
-      // Get current cash drawer quantity
-      const drawer = await prisma.stockItem.findUnique({
-        where: {
-          sku: "CASH_DRAWER",
-        },
-      })
-
-      if (!drawer) {
-        return NextResponse.json({ error: "Cash drawer not found" }, { status: 404 })
+      if (openDrawer) {
+        return NextResponse.json({ error: "A cash drawer is already open" }, { status: 400 })
       }
 
-      // Create a "Close Drawer" transaction
-      const transaction = await prisma.stockItem.update({
-        where: {
-          sku: "CASH_DRAWER",
-        },
+      const newSession = await prisma.registerSession.create({
         data: {
-          quantity: 0, // Reset to 0 when closing
-          lastUpdated: new Date(),
-          transactions: {
-            create: {
-              type: "Close Drawer",
-              quantity: 0,
-              previousQuantity: drawer.quantity,
-              newQuantity: 0,
-              location: "Main Register",
-              reference: reference || "Closing Balance",
-              notes: notes || "Cash drawer closed",
-            },
-          },
-        },
-        include: {
-          transactions: {
-            orderBy: {
-              createdAt: "desc",
-            },
-            take: 1,
-          },
+          openingBalance: Number(amount),
+          closingBalance: null,
+          status: "Open",
+          cashierId: session.user.id,
+          cashierName: session.user.name || "Unknown",
         },
       })
 
-      return NextResponse.json({
-        success: true,
-        message: "Cash drawer closed successfully",
-        transaction: transaction.transactions[0],
-      })
-    } else if (action === "payout") {
-      // Get current cash drawer quantity
-      const drawer = await prisma.stockItem.findUnique({
-        where: {
-          sku: "CASH_DRAWER",
-        },
+      return NextResponse.json({ success: true, session: newSession })
+    }
+
+    if (action === "close") {
+      const openDrawer = await prisma.registerSession.findFirst({
+        where: { status: "Open", closedAt: null },
       })
 
-      if (!drawer) {
-        return NextResponse.json({ error: "Cash drawer not found" }, { status: 404 })
+      if (!openDrawer) {
+        return NextResponse.json({ error: "No open cash drawer found" }, { status: 400 })
       }
 
-      // Create a "Payout" transaction
-      const transaction = await prisma.stockItem.update({
-        where: {
-          sku: "CASH_DRAWER",
-        },
+      const [cashSales, cashPayouts] = await Promise.all([
+        prisma.transaction.aggregate({
+          where: {
+            paymentMethod: "Cash",
+            date: { gte: openDrawer.openedAt },
+            status: "Completed",
+            total: { gt: 0 },
+          },
+          _sum: { total: true },
+        }),
+        prisma.transaction.aggregate({
+          where: {
+            paymentMethod: "Cash",
+            date: { gte: openDrawer.openedAt },
+            status: "Completed",
+            total: { lt: 0 },
+          },
+          _sum: { total: true },
+        }),
+      ])
+
+      const cashSalesTotal = cashSales._sum.total || 0
+      const cashPayoutsTotal = Math.abs(cashPayouts._sum.total || 0)
+      const expectedAmount = openDrawer.openingBalance + cashSalesTotal - cashPayoutsTotal
+      const difference = Number(amount) - expectedAmount
+
+      const closedDrawer = await prisma.registerSession.update({
+        where: { id: openDrawer.id },
         data: {
-          quantity: drawer.quantity - amount,
-          lastUpdated: new Date(),
-          transactions: {
-            create: {
-              type: "Payout",
-              quantity: amount,
-              previousQuantity: drawer.quantity,
-              newQuantity: drawer.quantity - amount,
-              location: "Main Register",
-              reference: reference || "",
-              reason: reason || "",
-              notes: notes || "Cash payout",
-            },
-          },
-        },
-        include: {
-          transactions: {
-            orderBy: {
-              createdAt: "desc",
-            },
-            take: 1,
-          },
+          closedAt: new Date(),
+          closingBalance: Number(amount),
+          difference,
+          status: "Closed",
         },
       })
 
       return NextResponse.json({
         success: true,
-        message: "Payout recorded successfully",
-        transaction: transaction.transactions[0],
+        session: closedDrawer,
+        details: {
+          expectedAmount,
+          actualAmount: Number(amount),
+          difference,
+        },
       })
+    }
+
+    if (action === "payout") {
+      const openDrawer = await prisma.registerSession.findFirst({
+        where: { status: "Open", closedAt: null },
+      })
+
+      if (!openDrawer) {
+        return NextResponse.json({ error: "No open cash drawer found" }, { status: 400 })
+      }
+
+      const payout = await prisma.transaction.create({
+        data: {
+          reference: reference || `PAYOUT-${Date.now()}`,
+          date: new Date(),
+          subtotal: -Number(amount),
+          tax: 0,
+          discount: 0,
+          total: -Number(amount),
+          paymentMethod: "Cash",
+          status: "Completed",
+          notes: `Cash payout: ${reason}`,
+          cashierId: session.user.id,
+          cashierName: session.user.name || "Unknown",
+        },
+      })
+
+      return NextResponse.json({ success: true, payout })
     }
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 })
   } catch (error) {
-    console.error("Error processing cash drawer operation:", error)
-    return NextResponse.json({ error: "Failed to process cash drawer operation" }, { status: 500 })
+    console.error("Error processing cash drawer action:", error)
+    return NextResponse.json(
+      { error: "Failed to process cash drawer action", details: String(error) },
+      { status: 500 },
+    )
   }
 }
-

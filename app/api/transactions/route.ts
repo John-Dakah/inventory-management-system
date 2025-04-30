@@ -62,7 +62,7 @@ async function handleGET(request: Request) {
 
     const transactions = await prisma.transaction.findMany({
       include: {
-        customer: true, // so you get customer details if needed
+        customer: true, 
         items: true,
       },
       orderBy: { createdAt: "desc" },
@@ -72,7 +72,7 @@ async function handleGET(request: Request) {
       .map((transaction) => ({
         id: transaction.id,
         date: transaction.date,
-        customer: transaction.customer ? `${transaction.customer.name}` : "Guest",
+        customer: transaction.customer ? `${transaction.customer.fullName}` : "Guest",
         items: transaction.items.length,
         total: transaction.total,
         paymentMethod: transaction.paymentMethod,
