@@ -1318,3 +1318,45 @@ export async function getProduct(id: string): Promise<Product | null> {
     return products.find((p) => p.id === id) || null
   }
 }
+// sdfghjkl;'fghjkl;fghjkl;dfghjkldfghjkfghjkghj
+
+export const forceSyncAllData = async (): Promise<{ success: boolean; message: string }> => {
+  if (!isOnline()) {
+    return { success: false, message: "Cannot sync while offline" }
+  }
+
+  try {
+    // First process any pending sync queue items
+    await processSyncQueue()
+
+    // Then fetch fresh data from the database
+    const stockResult = await getStockItemsFromDB()
+    const productsResult = await getProductsFromDB()
+
+    if (!stockResult.success || !productsResult.success) {
+      return {
+        success: false,
+        message: "Failed to fetch latest data from database",
+      }
+    }
+
+    // Update IndexedDB with the latest data
+    await saveStockItemToDB(stockResult.data)
+    saveProductsToIndexedDB(productsResult.data)
+
+    return {
+      success: true,
+      message: `Successfully synchronized ${stockResult.data.length} stock items and ${productsResult.data.length} products`,
+    }
+  } catch (error) {
+    console.error("Error during force sync:", error)
+    return {
+      success: false,
+      message: "Error during synchronization: " + (error instanceof Error ? error.message : String(error)),
+    }
+  }
+}
+function saveProductsToIndexedDB(data: any) {
+  throw new Error("Function not implemented.")
+}
+

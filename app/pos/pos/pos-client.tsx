@@ -73,6 +73,7 @@ interface Customer {
 
 // Cart item type
 interface CartItem {
+  stock: number
   id: string
   productId: string
   name: string
@@ -404,14 +405,35 @@ export default function POSClient() {
 
   // Add product to cart
   const addToCart = (product: Product) => {
+    if (product.quantity <= 0) {
+      toast({
+        title: "Out of Stock",
+        description: `${product.name} is out of stock and cannot be added to the cart.`,
+        variant: "destructive",
+      })
+      return
+    }
+  
     setCart((prevCart) => {
       const existingItem = prevCart.find((item) => item.productId === product.id)
-
+      const totalQuantityInCart = existingItem ? existingItem.quantity : 0
+  
+      if (totalQuantityInCart >= product.quantity) {
+        toast({
+          title: "Stock Limit Reached",
+          description: `You cannot add more of ${product.name} than available stock.`,
+          variant: "destructive",
+        })
+        return prevCart
+      }
+  
       if (existingItem) {
-        // Update quantity if product already in cart
-        return prevCart.map((item) => (item.productId === product.id ? { ...item, quantity: item.quantity + 1 } : item))
+        return prevCart.map((item) =>
+          item.productId === product.id
+            ? { ...item, quantity: item.quantity + 1 }
+            : item,
+        )
       } else {
-        // Add new item to cart
         return [
           ...prevCart,
           {
@@ -420,23 +442,35 @@ export default function POSClient() {
             name: product.name,
             price: product.price,
             quantity: 1,
+            stock: product.quantity, 
           },
         ]
       }
     })
   }
+  
+const updateQuantity = (itemId: string, newQuantity: number) => {
+  if (newQuantity < 1) return;
 
-  // Update cart item quantity
-  const updateQuantity = (itemId: string, newQuantity: number) => {
-    if (newQuantity < 1) return
+  setCart((prevCart) => 
+    prevCart.map((item) => {
+      if (item.id === itemId) {
+        // Check if newQuantity exceeds available stock
+        if (newQuantity > item.stock) {
+          return item;
+        }
+        return { ...item, quantity: newQuantity };
+      }
+      return item;
+    })
+  );
+}
 
-    setCart((prevCart) => prevCart.map((item) => (item.id === itemId ? { ...item, quantity: newQuantity } : item)))
-  }
+// Remove item from cart
+const removeItem = (itemId: string) => {
+  setCart((prevCart) => prevCart.filter((item) => item.id !== itemId));
+}
 
-  // Remove item from cart
-  const removeItem = (itemId: string) => {
-    setCart((prevCart) => prevCart.filter((item) => item.id !== itemId))
-  }
 
   // Clear the entire cart
   const clearCart = () => {

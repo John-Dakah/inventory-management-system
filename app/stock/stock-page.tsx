@@ -1,6 +1,7 @@
 "use client"
 
 import type React from "react"
+
 import { useState, useEffect } from "react"
 import { v4 as uuidv4 } from "uuid"
 import { useSearchParams } from "next/navigation"
@@ -54,6 +55,7 @@ import {
   type Product,
   getProduct,
   getStockItems,
+  forceSyncAllData,
 } from "@/lib/db"
 
 export default function StockPage() {
@@ -69,7 +71,15 @@ export default function StockPage() {
   const [isAdjustmentOpen, setIsAdjustmentOpen] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
   const [exportFormat, setExportFormat] = useState<string | null>(null)
-  const [stats, setStats] = useState({
+  const [stats, setStats] = useState<{
+    totalItems: number
+    totalUnits: number
+    lowStockItems: number
+    outOfStockItems: number
+    categories: string[]
+    locations: string[]
+    types: string[]
+  }>({
     totalItems: 0,
     totalUnits: 0,
     lowStockItems: 0,
@@ -116,11 +126,12 @@ export default function StockPage() {
   // Add state for out of stock products and fetch them
   const [outOfStockProducts, setOutOfStockProducts] = useState<Product[]>([])
   // Add state to track online status
-  const [online, setOnline] = useState(true)
+  const [online, setOnline] = useState(isOnline())
 
   // Add these states
   const [loadingRetries, setLoadingRetries] = useState(0)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [dataSource, setDataSource] = useState<"server" | "local">("local")
 
   // Load stock items, products and stats
   useEffect(() => {
@@ -130,13 +141,31 @@ export default function StockPage() {
         setLoadError(null)
 
         // Check online status
-        const networkStatus = isOnline()
+        let networkStatus;
+        try {
+          networkStatus = isOnline();
+        } catch (error) {
+        try {
+          const items = await getStockItems();
+        } catch (error) {
+          console.error("Error fetching stock items:", error);
+          throw new Error("Failed to fetch stock items from the database.");
+        }
+        try {
+          const products = await getProducts();
+        } catch (error) {
+          console.error("Error fetching products:", error);
+          throw new Error("Failed to fetch products from the database.");
+        }
+          networkStatus = false; 
+        }
         setOnline(networkStatus)
 
-        // Load stock items
+        // Load stock items - this will try server first, then fall back to IndexedDB
         const items = await getStockItems()
         setStockItems(items)
         setFilteredItems(items)
+        setDataSource(networkStatus ? "server" : "local")
 
         // Load products for stock in form
         const products = await getProducts()
@@ -185,7 +214,11 @@ export default function StockPage() {
     loadData()
 
     // Set up event listeners for online/offline status
-    const handleOnline = () => setOnline(true)
+    const handleOnline = () => {
+      setOnline(true)
+      // Reload data when coming back online
+      loadData()
+    }
     const handleOffline = () => setOnline(false)
 
     window.addEventListener("online", handleOnline)
@@ -195,7 +228,7 @@ export default function StockPage() {
       window.removeEventListener("online", handleOnline)
       window.removeEventListener("offline", handleOffline)
     }
-  }, [productId])
+  }, [productId, loadingRetries])
 
   // Apply filters
   useEffect(() => {
@@ -373,7 +406,7 @@ export default function StockPage() {
           quantity: quantity,
           location: stockInForm.location,
           status: status,
-          type: "Finished Good", // Default type, could be made selectable
+          type: "Finished Good", 
           lastUpdated: now,
           createdAt: now,
           updatedAt: now,
@@ -840,12 +873,53 @@ export default function StockPage() {
     )
   }
 
+  // Add a function to handle force sync
+  const handleForceSync = async () => {
+    try {
+      setIsLoading(true)
+      const result = await forceSyncAllData()
+
+      if (result.success) {
+        toast({
+          title: "Force Sync Complete",
+          description: result.message,
+        })
+
+        // Reload data
+        const items = await getStockItems()
+        setStockItems(items)
+        setFilteredItems(items)
+
+        const products = await getProducts()
+        const outOfStock = products.filter((p) => p.quantity === 0)
+        setOutOfStockProducts(outOfStock)
+        setAvailableProducts(products)
+
+        const stockStats = await getStockStats()
+        setStats(stockStats)
+
+        setDataSource("server")
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Force Sync Failed",
+          description: result.message,
+        })
+      }
+    } catch (error) {
+      console.error("Error during force sync:", error)
+      toast({
+        variant: "destructive",
+        title: "Sync Error",
+        description: "An unexpected error occurred during synchronization.",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   // Add error UI
   if (loadError) {
-      function loadData() {
-          throw new Error("Function not implemented.")
-      }
-
     return (
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
@@ -864,15 +938,33 @@ export default function StockPage() {
           <CardContent>
             <p>{loadError}</p>
           </CardContent>
-          <CardFooter>
+          <CardFooter className="flex gap-2">
             <Button
               onClick={() => {
                 setLoadingRetries(0)
-                loadData()
+                setIsLoading(true)
+                // Reload data
+                getStockItems()
+                  .then((items) => {
+                    setStockItems(items)
+                    setFilteredItems(items)
+                    setIsLoading(false)
+                  })
+                  .catch((error) => {
+                    console.error("Error reloading data:", error)
+                    setLoadError("Failed to reload data. Please try again.")
+                    setIsLoading(false)
+                  })
               }}
             >
               Try Again
             </Button>
+
+            {online && (
+              <Button variant="outline" onClick={handleForceSync}>
+                Force Sync
+              </Button>
+            )}
           </CardFooter>
         </Card>
       </div>
@@ -884,7 +976,13 @@ export default function StockPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Stock Management</h1>
-          <p className="text-muted-foreground">Manage your inventory stock levels and movements</p>
+          <p className="text-muted-foreground">
+            Manage your inventory stock levels and movements
+            {dataSource === "local" && !online && (
+              <span className="ml-2 text-amber-500 text-sm">(Working offline with local data)</span>
+            )}
+            {dataSource === "server" && <span className="ml-2 text-green-500 text-sm">(Connected to database)</span>}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <NetworkStatus />

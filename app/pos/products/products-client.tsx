@@ -7,44 +7,19 @@ import {
   PackageIcon,
   EditIcon,
   TrashIcon,
-  ArrowUpDownIcon,
+  MoreVerticalIcon, // <-- Replace ArrowUpDownIcon here (better for actions)
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useToast } from "@/components/ui/use-toast"
 import { useAuth } from "@/lib/auth-context"
 import { Badge } from "@/components/ui/badge"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
-// Define the Product type based on your Prisma schema
 type Product = {
   id: string
   name: string
@@ -55,9 +30,9 @@ type Product = {
   category: string | null
   vendor: string | null
   imageUrl: string | null
-  createdAt: Date
-  updatedAt: Date
-  status: string // This is calculated based on quantity
+  createdAt: string // <-- should be string, not Date
+  updatedAt: string // <-- should be string, not Date
+  status: string
 }
 
 export default function ProductsClient() {
@@ -77,32 +52,41 @@ export default function ProductsClient() {
         const params = new URLSearchParams()
         if (searchQuery) params.append("search", searchQuery)
         if (categoryFilter !== "All") params.append("category", categoryFilter)
-        if (statusFilter !== "All") params.append("status", statusFilter)
 
         const response = await fetch(`/api/products?${params.toString()}`)
-        if (!response.ok) throw new Error("Failed to fetch products")
-
-        const result = await response.json()
-        const productList: Product[] = Array.isArray(result)
-          ? result
-          : Array.isArray(result.products)
-          ? result.products
-          : []
-
-        setProducts(productList)
-
-        if (categoryFilter === "All") {
-          const uniqueCategories = [
-            "All",
-            ...Array.from(new Set(productList.map((p) => p.category).filter((c): c is string => c !== null))),
-          ]
-          setCategories(uniqueCategories)
+        
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || "Failed to fetch products")
         }
+
+        const productsResponse = await response.json()
+
+        const processedProducts = productsResponse.data.map((product: any) => ({
+          ...product,
+          status: 
+            product.quantity <= 0 ? "Out of Stock" :
+            product.quantity <= 10 ? "Low Stock" :
+            "In Stock"
+        }))
+
+        const filteredProducts = statusFilter === "All" 
+          ? processedProducts 
+          : processedProducts.filter((p: Product) => p.status === statusFilter)
+
+        setProducts(filteredProducts)
+
+        const uniqueCategories = [
+          "All",
+          ...new Set(productsResponse.data.map((p: any) => p.category).filter(Boolean))
+        ]
+        setCategories(uniqueCategories)
+
       } catch (error) {
-        console.error("Error fetching products:", error)
+        console.error("Fetch error:", error)
         toast({
           title: "Error",
-          description: "Failed to load products. Please try again.",
+          description: error instanceof Error ? error.message : "Failed to load products",
           variant: "destructive",
         })
       } finally {
@@ -141,7 +125,7 @@ export default function ProductsClient() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle>Product Inventory</CardTitle>
-          <CardDescription>{products.length} products found</CardDescription>
+          <CardDescription>{loading ? "Loading..." : `${products.length} products found`}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="mb-4 flex flex-col sm:flex-row gap-4">
@@ -181,7 +165,8 @@ export default function ProductsClient() {
               </Select>
             </div>
           </div>
-          <div className="rounded-md border">
+
+          <div className="rounded-md border overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -199,10 +184,7 @@ export default function ProductsClient() {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell
-                      colSpan={hasPermission("manage_products") ? 7 : 6}
-                      className="text-center py-4"
-                    >
+                    <TableCell colSpan={hasPermission("manage_products") ? 7 : 6} className="text-center py-4">
                       Loading products...
                     </TableCell>
                   </TableRow>
@@ -219,10 +201,10 @@ export default function ProductsClient() {
                           variant="outline"
                           className={
                             product.status === "In Stock"
-                              ? "bg-green-100 text-green-800 hover:bg-green-100"
+                              ? "bg-green-100 text-green-800"
                               : product.status === "Low Stock"
-                              ? "bg-yellow-100 text-yellow-800 hover:bg-yellow-100"
-                              : "bg-red-100 text-red-800 hover:bg-red-100"
+                              ? "bg-yellow-100 text-yellow-800"
+                              : "bg-red-100 text-red-800"
                           }
                         >
                           {product.status}
@@ -233,7 +215,7 @@ export default function ProductsClient() {
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="icon" className="h-8 w-8">
-                                <ArrowUpDownIcon className="h-4 w-4" />
+                                <MoreVerticalIcon className="h-4 w-4" />
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
@@ -253,10 +235,7 @@ export default function ProductsClient() {
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell
-                      colSpan={hasPermission("manage_products") ? 7 : 6}
-                      className="text-center py-4"
-                    >
+                    <TableCell colSpan={hasPermission("manage_products") ? 7 : 6} className="text-center py-4">
                       No products found
                     </TableCell>
                   </TableRow>

@@ -27,8 +27,13 @@
     "@radix-ui/react-toast": "^1.1.5",
     "@radix-ui/react-tooltip": "^1.1.8",
     "@tremor/react": "^3.13.3",
+<<<<<<< HEAD
     "@zxing/library": "^0.21.3",
     "axios": "^1.8.4",
+=======
+    "axios": "^1.8.4",
+    "@zxing/library": "^0.21.3",
+>>>>>>> d993a2d0f57307d63ba5aaa9f63ab6775b954d23
     "bcrypt": "^5.1.1",
     "bcryptjs": "^3.0.2",
     "chart.js": "^4.4.9",

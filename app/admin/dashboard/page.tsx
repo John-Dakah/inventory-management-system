@@ -3,11 +3,16 @@ import { Package2Icon, TruckIcon, Users2Icon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+<<<<<<< HEAD
 
 import StockAreaChart from "@/components/charts/area-chart"
 import WarehouseBarChart  from "@/components/charts/bar-chart"
 
 
+=======
+import StockAreaChart from "@/components/charts/area-chart"
+import WarehouseBarChart  from "@/components/charts/bar-chart"
+>>>>>>> 9d7b4d2b0a8552f1e9554309a204b1bd283f49be
 import {
   getDashboardStats,
   getRecentActivity,

@@ -4,9 +4,6 @@ import { PrismaClient } from "@prisma/client"
 // Initialize Prisma client
 const prisma = new PrismaClient()
 
-/**
- * GET handler for fetching a specific stock item by ID
- */
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const id = params.id
