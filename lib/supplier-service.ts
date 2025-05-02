@@ -7,9 +7,8 @@ import {
   getByIndex,
   countByIndex,
 } from "@/lib/db-utils"
-import type { Supplier } from "@/types"
+import type {Supplier } from "@/types"
 
-// IndexedDB Service
 
 export async function getSuppliers(): Promise<Supplier[]> {
   return getAllFromStore<Supplier>(SUPPLIERS_DB.stores.suppliers)
@@ -55,7 +54,7 @@ async function getNewSuppliersThisMonth(): Promise<number> {
 }
 
 export async function saveSupplier(supplier: Supplier): Promise<string> {
-  return putToStore(SUPPLIERS_DB.stores.suppliers, supplier)
+  return putToStore(SUPPLIERS_DB.stores.suppliers, supplier) as unknown as string
 }
 
 export async function deleteSupplier(id: string): Promise<void> {

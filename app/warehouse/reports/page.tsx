@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
@@ -25,18 +25,14 @@ import {
   Boxes,
   Package,
   Truck,
-  AlertTriangle,
   Activity,
   DollarSign,
-  ShoppingCart,
 } from "lucide-react"
 import { getProducts } from "@/lib/product-service"
-import { getSuppliers } from "@/lib/supplier-service"
+import { getSuppliers, type Supplier } from "@/lib/supplier-service"
 import { getStockTransactions, getStockItems } from "@/lib/stock-service"
-import { format, subDays, subMonths, subQuarters, differenceInDays, isSameDay, parseISO } from "date-fns"
+import { format, subDays, subMonths, subQuarters, differenceInDays, isSameDay } from "date-fns"
 import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 
@@ -54,7 +50,8 @@ import {
   Legend,
   Filler,
 } from "chart.js"
-import { Line, Pie, Doughnut } from "react-chartjs-2"
+import { Pie, Doughnut, Bar } from "react-chartjs-2"
+import { Product, StockTransaction } from "@prisma/client"
 
 // Register Chart.js components
 ChartJS.register(
@@ -69,39 +66,6 @@ ChartJS.register(
   Legend,
   Filler,
 )
-
-// Type definitions
-interface Product {
-  id: string
-  name: string
-  sku: string
-  category: string
-  quantity: number
-  price: number
-  location: string
-  lastUpdated?: string
-}
-
-interface StockTransaction {
-  id: string
-  stockItemId: string
-  productName: string
-  productSku: string
-  type: "RECEIVE" | "ISSUE" | "ADJUSTMENT_ADD" | "ADJUSTMENT_REMOVE" | "in" | "out"
-  quantity: number
-  previousQuantity: number
-  newQuantity: number
-  reason?: string
-  location?: string
-  createdAt: string
-  date: string
-}
-
-interface Supplier {
-  id: string
-  name: string
-  status: string
-}
 
 interface ChartDataset {
   labels: string[]
@@ -216,29 +180,34 @@ export default function WarehouseReportsPage() {
       try {
         setIsLoading(true)
 
-        // Load products
-        const products = (await getProducts()) as Product[]
+        // Load products from real database
+        const products = await getProducts({})
 
-        // Load suppliers
-        const suppliers = (await getSuppliers()) as Supplier[]
+        // Load suppliers from real database
+        const suppliers = await getSuppliers()
 
-        // Load stock transactions
-        const transactions = (await getStockTransactions({
+        // Load stock transactions from real database with date filtering
+        const transactions = await getStockTransactions({
           startDate,
           endDate,
-        })) as StockTransaction[]
+        })
 
         // Get additional stock items for historical comparison
-        const allStockItems = (await getStockItems()) as StockTransaction[]
+        const allStockItems = await getStockItems()
 
-        // Calculate top moving products
+        // Calculate top moving products - handle potential mismatches between products and transactions
         const productMovements = products
           .map((product) => {
             const movement = transactions
-              .filter((t) => t.stockItemId === product.id)
+              .filter((t) => {
+                // Match by ID if possible, otherwise try to match by SKU
+                return (
+                  t.stockItemId === product.id || (t.stockItem?.sku && product.sku && t.stockItem.sku === product.sku)
+                )
+              })
               .reduce((sum, t) => {
                 // Count both ins and outs as movement
-                return sum + t.quantity
+                return sum + Math.abs(t.quantity || 0)
               }, 0)
 
             return {
@@ -252,7 +221,7 @@ export default function WarehouseReportsPage() {
           .slice(0, 5)
 
         // Calculate stock trends
-        const stockTrends = calculateStockTrends(allStockItems)
+        const stockTrends = calculateStockTrends(transactions)
 
         // Calculate value by category
         const valueByCategory = calculateValueByCategory(products)
@@ -300,19 +269,20 @@ export default function WarehouseReportsPage() {
 
     // Daily trend
     const todayItems = stockItems.filter((item) => {
-      const itemDate = parseISO(item.date)
+      const itemDate = new Date(item.createdAt)
       return isSameDay(itemDate, today)
     })
 
     const yesterdayItems = stockItems.filter((item) => {
-      const itemDate = parseISO(item.date)
+      const itemDate = new Date(item.createdAt)
       return isSameDay(itemDate, yesterday)
     })
 
     const todayNet = todayItems.reduce((net, item) => {
+      // Handle different transaction types from your schema
       return (
         net +
-        (item.type === "in" || item.type === "RECEIVE" || item.type === "ADJUSTMENT_ADD"
+        (item.type === "RECEIVE" || item.type === "ADJUSTMENT_ADD" || item.type === "in"
           ? item.quantity
           : -item.quantity)
       )
@@ -321,7 +291,7 @@ export default function WarehouseReportsPage() {
     const yesterdayNet = yesterdayItems.reduce((net, item) => {
       return (
         net +
-        (item.type === "in" || item.type === "RECEIVE" || item.type === "ADJUSTMENT_ADD"
+        (item.type === "RECEIVE" || item.type === "ADJUSTMENT_ADD" || item.type === "in"
           ? item.quantity
           : -item.quantity)
       )
@@ -332,12 +302,12 @@ export default function WarehouseReportsPage() {
 
     // Weekly trend
     const thisWeekItems = stockItems.filter((item) => {
-      const itemDate = parseISO(item.date)
+      const itemDate = new Date(item.createdAt)
       return differenceInDays(today, itemDate) <= 7
     })
 
     const lastWeekItems = stockItems.filter((item) => {
-      const itemDate = parseISO(item.date)
+      const itemDate = new Date(item.createdAt)
       const days = differenceInDays(today, itemDate)
       return days > 7 && days <= 14
     })
@@ -345,7 +315,7 @@ export default function WarehouseReportsPage() {
     const thisWeekNet = thisWeekItems.reduce((net, item) => {
       return (
         net +
-        (item.type === "in" || item.type === "RECEIVE" || item.type === "ADJUSTMENT_ADD"
+        (item.type === "RECEIVE" || item.type === "ADJUSTMENT_ADD" || item.type === "in"
           ? item.quantity
           : -item.quantity)
       )
@@ -354,7 +324,7 @@ export default function WarehouseReportsPage() {
     const lastWeekNet = lastWeekItems.reduce((net, item) => {
       return (
         net +
-        (item.type === "in" || item.type === "RECEIVE" || item.type === "ADJUSTMENT_ADD"
+        (item.type === "RECEIVE" || item.type === "ADJUSTMENT_ADD" || item.type === "in"
           ? item.quantity
           : -item.quantity)
       )
@@ -366,12 +336,12 @@ export default function WarehouseReportsPage() {
 
     // Monthly trend
     const thisMonthItems = stockItems.filter((item) => {
-      const itemDate = parseISO(item.date)
+      const itemDate = new Date(item.createdAt)
       return differenceInDays(today, itemDate) <= 30
     })
 
     const lastMonthItems = stockItems.filter((item) => {
-      const itemDate = parseISO(item.date)
+      const itemDate = new Date(item.createdAt)
       const days = differenceInDays(today, itemDate)
       return days > 30 && days <= 60
     })
@@ -379,7 +349,7 @@ export default function WarehouseReportsPage() {
     const thisMonthNet = thisMonthItems.reduce((net, item) => {
       return (
         net +
-        (item.type === "in" || item.type === "RECEIVE" || item.type === "ADJUSTMENT_ADD"
+        (item.type === "RECEIVE" || item.type === "ADJUSTMENT_ADD" || item.type === "in"
           ? item.quantity
           : -item.quantity)
       )
@@ -388,7 +358,7 @@ export default function WarehouseReportsPage() {
     const lastMonthNet = lastMonthItems.reduce((net, item) => {
       return (
         net +
-        (item.type === "in" || item.type === "RECEIVE" || item.type === "ADJUSTMENT_ADD"
+        (item.type === "RECEIVE" || item.type === "ADJUSTMENT_ADD" || item.type === "in"
           ? item.quantity
           : -item.quantity)
       )
@@ -459,6 +429,15 @@ export default function WarehouseReportsPage() {
   }
 
   const calculateStockHealth = (products: Product[]) => {
+    if (!products.length) {
+      return {
+        healthScore: 0,
+        outOfStockPercentage: 0,
+        lowStockPercentage: 0,
+        excessStockPercentage: 0,
+      }
+    }
+
     const totalProducts = products.length
     const outOfStock = products.filter((p) => p.quantity === 0).length
     const lowStock = products.filter((p) => p.quantity > 0 && p.quantity <= 5).length
@@ -516,9 +495,8 @@ export default function WarehouseReportsPage() {
     const transactionsByDate: Record<string, { additions: number; removals: number }> = {}
 
     transactions.forEach((transaction) => {
-      const date = transaction.date
-        ? transaction.date.split("T")[0]
-        : format(new Date(transaction.createdAt), "yyyy-MM-dd")
+      // Ensure we have a valid date
+      const date = transaction.date || format(new Date(transaction.createdAt), "yyyy-MM-dd")
 
       if (!transactionsByDate[date]) {
         transactionsByDate[date] = {
@@ -527,6 +505,7 @@ export default function WarehouseReportsPage() {
         }
       }
 
+      // Handle different transaction types from your schema
       if (transaction.type === "RECEIVE" || transaction.type === "ADJUSTMENT_ADD" || transaction.type === "in") {
         transactionsByDate[date].additions += transaction.quantity
       } else {
@@ -714,8 +693,8 @@ export default function WarehouseReportsPage() {
       ]
 
       const rows = stockData.transactions.map((t) => [
-        format(new Date(t.createdAt || t.date), "yyyy-MM-dd"),
-        t.productName || "",
+        format(new Date(t.createdAt), "yyyy-MM-dd"),
+        t.stockItem?.name || "",
         t.productSku || "",
         t.type,
         t.quantity,
@@ -752,20 +731,25 @@ export default function WarehouseReportsPage() {
 
     try {
       // Re-fetch data with current date settings
-      const products = (await getProducts()) as Product[]
-      const suppliers = (await getSuppliers()) as Supplier[]
-      const transactions = (await getStockTransactions({
+      const products = await getProducts()
+      const suppliers = await getSuppliers()
+      const transactions = await getStockTransactions({
         startDate,
         endDate,
-      })) as StockTransaction[]
-      const allStockItems = (await getStockItems()) as StockTransaction[]
+      })
+      const allStockItems = await getStockItems()
 
       // Recalculate all derived data
       const productMovements = products
         .map((product) => {
           const movement = transactions
-            .filter((t) => t.stockItemId === product.id)
-            .reduce((sum, t) => sum + t.quantity, 0)
+            .filter((t) => {
+              // Match by ID if possible, otherwise try to match by SKU
+              return (
+                t.stockItemId === product.id || (t.stockItem?.sku && product.sku && t.stockItem.sku === product.sku)
+              )
+            })
+            .reduce((sum, t) => sum + Math.abs(t.quantity || 0), 0)
 
           return {
             id: product.id,
@@ -777,7 +761,7 @@ export default function WarehouseReportsPage() {
         .sort((a, b) => b.movement - a.movement)
         .slice(0, 5)
 
-      const stockTrends = calculateStockTrends(allStockItems)
+      const stockTrends = calculateStockTrends(transactions)
       const valueByCategory = calculateValueByCategory(products)
       const valueByLocation = calculateValueByLocation(products)
       const stockHealth = calculateStockHealth(products)
@@ -1278,466 +1262,6 @@ export default function WarehouseReportsPage() {
                     </div>
                   )}
                 </CardContent>
-                <CardFooter className="border-t pt-4">
-                  <div className="w-full flex flex-col gap-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
-                        <div className="h-3 w-3 rounded-full bg-green-500"></div>
-                        <span>In Stock</span>
-                      </div>
-                      <span className="font-medium">
-                        {stockData.products.filter((p) => p.quantity > 5).length} products
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
-                        <div className="h-3 w-3 rounded-full bg-amber-500"></div>
-                        <span>Low Stock</span>
-                      </div>
-                      <span className="font-medium">
-                        {stockData.products.filter((p) => p.quantity > 0 && p.quantity <= 5).length} products
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
-                        <div className="h-3 w-3 rounded-full bg-red-500"></div>
-                        <span>Out of Stock</span>
-                      </div>
-                      <span className="font-medium">
-                        {stockData.products.filter((p) => p.quantity === 0).length} products
-                      </span>
-                    </div>
-                  </div>
-                </CardFooter>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle>Stock Health Analysis</CardTitle>
-                      <CardDescription>Overall inventory health assessment</CardDescription>
-                    </div>
-                    <AlertTriangle
-                      className={cn(
-                        "h-5 w-5",
-                        stockData.stockHealth.healthScore > 70
-                          ? "text-green-500"
-                          : stockData.stockHealth.healthScore > 40
-                            ? "text-amber-500"
-                            : "text-red-500",
-                      )}
-                    />
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-6">
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">Overall Health Score</span>
-                        <span
-                          className={cn(
-                            "text-sm font-medium",
-                            stockData.stockHealth.healthScore > 70
-                              ? "text-green-600"
-                              : stockData.stockHealth.healthScore > 40
-                                ? "text-amber-600"
-                                : "text-red-600",
-                          )}
-                        >
-                          {stockData.stockHealth.healthScore.toFixed(1)}%
-                        </span>
-                      </div>
-                      <Progress
-                        value={stockData.stockHealth.healthScore}
-                        className="h-2"
-                        indicatorClassName={cn(
-                          stockData.stockHealth.healthScore > 70
-                            ? "bg-green-500"
-                            : stockData.stockHealth.healthScore > 40
-                              ? "bg-amber-500"
-                              : "bg-red-500",
-                        )}
-                      />
-                    </div>
-
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-sm">
-                          <span>Out of Stock Items</span>
-                          <span className="font-medium">{stockData.stockHealth.outOfStockPercentage.toFixed(1)}%</span>
-                        </div>
-                        <Progress
-                          value={stockData.stockHealth.outOfStockPercentage}
-                          className="h-1.5"
-                          indicatorClassName="bg-red-500"
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-sm">
-                          <span>Low Stock Items</span>
-                          <span className="font-medium">{stockData.stockHealth.lowStockPercentage.toFixed(1)}%</span>
-                        </div>
-                        <Progress
-                          value={stockData.stockHealth.lowStockPercentage}
-                          className="h-1.5"
-                          indicatorClassName="bg-amber-500"
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-sm">
-                          <span>Excess Stock Items</span>
-                          <span className="font-medium">{stockData.stockHealth.excessStockPercentage.toFixed(1)}%</span>
-                        </div>
-                        <Progress
-                          value={stockData.stockHealth.excessStockPercentage}
-                          className="h-1.5"
-                          indicatorClassName="bg-blue-500"
-                        />
-                      </div>
-                    </div>
-
-                    <div
-                      className={cn(
-                        "p-3 rounded-lg text-sm",
-                        stockData.stockHealth.healthScore > 70
-                          ? "bg-green-50 text-green-700 border border-green-200"
-                          : stockData.stockHealth.healthScore > 40
-                            ? "bg-amber-50 text-amber-700 border border-amber-200"
-                            : "bg-red-50 text-red-700 border border-red-200",
-                      )}
-                    >
-                      <div className="flex items-start gap-2">
-                        <Info className="h-4 w-4 mt-0.5" />
-                        <div>
-                          {stockData.stockHealth.healthScore > 70
-                            ? "Your inventory is in good health. Continue monitoring low stock items for timely reordering."
-                            : stockData.stockHealth.healthScore > 40
-                              ? "Your inventory requires attention. Consider restocking low stock items and addressing out-of-stock products."
-                              : "Your inventory health is critical. Immediate action is needed to restock out-of-stock items and review your inventory management process."}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle>Top Moving Products</CardTitle>
-                      <CardDescription>Products with highest transaction volume</CardDescription>
-                    </div>
-                    <ShoppingCart className="h-5 w-5 text-muted-foreground" />
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {stockData.topMovingProducts.length > 0 ? (
-                      stockData.topMovingProducts.map(
-                        (product, index) =>
-                          (
-                            <motion.div 
-                          key={product.id} 
-                          className="relative"
-                          initial={{ x: 20, opacity: 0 }}
-                          animate={{ 
-                            x: 0, 
-                            opacity: 1,
-                            transition: { delay: 0.1 * index }
-                          }}
-                        >
-                          <div className="flex items-center justify-between mb-1">
-                            <div className="flex items-center gap-2">
-                              <Badge 
-                                variant="outline" 
-                                className={cn(
-                                  "w-6 h-6 flex items-center justify-center p-0",
-                                  index === 0 ? "border-amber-300 bg-amber-50 text-amber-700" :
-                                  index === 1 ? "border-gray-300 bg-gray-50 text-gray-700" :
-                                  index === 2 ? "border-orange-300 bg-orange-50 text-orange-700" :
-                                  "border-blue-300 bg-blue-50 text-blue-700"
-                                )}
-                              >
-                                {index + 1}
-                              </Badge>
-                              <div>
-                                <p className="text-sm font-medium">{product.name}</p>
-                                <p className="text-xs text-muted-foreground">SKU: {product.sku}</p>
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-sm font-medium">{product.movement} units</p>
-                              <p className="text-xs text-muted-foreground">movement</p>
-                            </div>
-                          </div>
-                          <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
-                            <motion.div 
-                              className={cn(
-                                "h-full",
-                                index === 0 ? "bg-amber-500" :
-                                index === 1 ? "bg-gray-500" :
-                                index === 2 ? "bg-orange-500" :
-                                "bg-blue-500"
-                              )}
-                              initial={{ width: 0 }}
-                              animate={{ 
-                                width: `${(product.movement / stockData.topMovingProducts[0].movement) * 100}%`,
-                                transition: { delay: 0.2 + (index * 0.1), duration: 0.7 }
-                              }}
-                            ></motion.div>
-                          </div>
-                        </motion.div>
-                          ),
-                      )
-                    ) : (
-                      <div className="flex flex-col items-center justify-center py-8 text-center">
-                        <motion.div
-                          initial={{ scale: 0.8, opacity: 0 }}
-                          animate={{ scale: 1, opacity: 1 }}
-                          transition={{ duration: 0.3 }}
-                        >
-                          <ShoppingCart className="h-12 w-12 text-muted-foreground mb-3 opacity-20" />
-                          <p className="text-muted-foreground">No transaction data available</p>
-                        </motion.div>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle>Recent Transactions</CardTitle>
-                      <CardDescription>Latest stock movements and adjustments</CardDescription>
-                    </div>
-                    <Activity className="h-5 w-5 text-muted-foreground" />
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {stockData.transactions.length > 0 ? (
-                    <div className="max-h-[300px] overflow-auto pr-2">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Date</TableHead>
-                            <TableHead>Product</TableHead>
-                            <TableHead>Type</TableHead>
-                            <TableHead>Qty</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {stockData.transactions
-                            .sort(
-                              (a, b) =>
-                                new Date(b.date || b.createdAt).getTime() - new Date(a.date || a.createdAt).getTime(),
-                            )
-                            .slice(0, 5)
-                            .map((transaction, index) => (
-                              <motion.tr
-                                key={transaction.id}
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{
-                                  opacity: 1,
-                                  y: 0,
-                                  transition: { delay: 0.1 * index, duration: 0.3 },
-                                }}
-                                className="[&>td]:py-3 [&>td]:px-4"
-                              >
-                                <TableCell>
-                                  <div className="flex flex-col">
-                                    <span className="text-xs font-medium">
-                                      {format(new Date(transaction.date || transaction.createdAt), "MMM dd")}
-                                    </span>
-                                    <span className="text-xs text-muted-foreground">
-                                      {format(new Date(transaction.date || transaction.createdAt), "yyyy")}
-                                    </span>
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  <div className="flex flex-col">
-                                    <span className="text-xs font-medium">{transaction.productName}</span>
-                                    <span className="text-xs text-muted-foreground">{transaction.productSku}</span>
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  <Badge
-                                    variant={
-                                      transaction.type === "in" ||
-                                      transaction.type === "RECEIVE" ||
-                                      transaction.type === "ADJUSTMENT_ADD"
-                                        ? "outline"
-                                        : "destructive"
-                                    }
-                                    className={
-                                      transaction.type === "in" ||
-                                      transaction.type === "RECEIVE" ||
-                                      transaction.type === "ADJUSTMENT_ADD"
-                                        ? "bg-green-50 text-green-700 border-green-200"
-                                        : ""
-                                    }
-                                  >
-                                    {transaction.type === "in" || transaction.type === "RECEIVE"
-                                      ? "Stock In"
-                                      : transaction.type === "ADJUSTMENT_ADD"
-                                        ? "Adjust (+)"
-                                        : transaction.type === "ADJUSTMENT_REMOVE"
-                                          ? "Adjust (-)"
-                                          : "Stock Out"}
-                                  </Badge>
-                                </TableCell>
-                                <TableCell>
-                                  <span className="font-medium">{transaction.quantity}</span>
-                                </TableCell>
-                              </motion.tr>
-                            ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-8 text-center">
-                      <motion.div
-                        initial={{ scale: 0.8, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        transition={{ duration: 0.3 }}
-                      >
-                        <Activity className="h-12 w-12 text-muted-foreground mb-3 opacity-20" />
-                        <p className="text-muted-foreground">No transaction data available</p>
-                      </motion.div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </motion.div>
-          </TabsContent>
-
-          <TabsContent value="movement" className="space-y-4 mt-0">
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-            >
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle>Stock Movement Over Time</CardTitle>
-                      <CardDescription>Additions and removals from inventory</CardDescription>
-                    </div>
-                    <LineChart className="h-5 w-5 text-muted-foreground" />
-                  </div>
-                </CardHeader>
-                <CardContent className="h-[400px]">
-                  {chartData.stockMovement && chartData.stockMovement.labels.length > 0 ? (
-                    <Line
-                      data={chartData.stockMovement}
-                      options={{
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        scales: {
-                          y: {
-                            beginAtZero: true,
-                            title: {
-                              display: true,
-                              text: "Quantity",
-                            },
-                          },
-                          x: {
-                            title: {
-                              display: true,
-                              text: "Date",
-                            },
-                          },
-                        },
-                        plugins: {
-                          legend: {
-                            position: "top",
-                          },
-                          tooltip: {
-                            mode: "index",
-                            intersect: false,
-                          },
-                        },
-                        interaction: {
-                          mode: "nearest",
-                          intersect: false,
-                        },
-                        animation: {
-                          duration: 1000,
-                        },
-                      }}
-                    />
-                  ) : (
-                    <div className="flex items-center justify-center h-full">
-                      <p className="text-muted-foreground">No transaction data available for the selected period</p>
-                    </div>
-                  )}
-                </CardContent>
-                <CardFooter className="border-t pt-4">
-                  <div className="w-full space-y-4">
-                    <div className="flex justify-between items-center">
-                      <div className="flex items-center gap-2">
-                        <div className="h-3 w-3 rounded-full bg-green-500"></div>
-                        <span className="text-sm">Total Stock Added:</span>
-                      </div>
-                      <span className="font-medium">
-                        {stockData.transactions
-                          .filter((t) => t.type === "in" || t.type === "RECEIVE" || t.type === "ADJUSTMENT_ADD")
-                          .reduce((sum, t) => sum + t.quantity, 0)}{" "}
-                        units
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <div className="flex items-center gap-2">
-                        <div className="h-3 w-3 rounded-full bg-red-500"></div>
-                        <span className="text-sm">Total Stock Removed:</span>
-                      </div>
-                      <span className="font-medium">
-                        {stockData.transactions
-                          .filter((t) => t.type === "out" || t.type === "ISSUE" || t.type === "ADJUSTMENT_REMOVE")
-                          .reduce((sum, t) => sum + t.quantity, 0)}{" "}
-                        units
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <div className="flex items-center gap-2">
-                        <div className="h-3 w-3 rounded-full bg-blue-500"></div>
-                        <span className="text-sm">Net Stock Change:</span>
-                      </div>
-                      <span
-                        className={cn(
-                          "font-medium",
-                          stockData.transactions.reduce((net, t) => {
-                            return (
-                              net +
-                              (t.type === "in" || t.type === "RECEIVE" || t.type === "ADJUSTMENT_ADD"
-                                ? t.quantity
-                                : -t.quantity)
-                            )
-                          }, 0) > 0
-                            ? "text-green-600"
-                            : "text-red-600",
-                        )}
-                      >
-                        {stockData.transactions.reduce((net, t) => {
-                          return (
-                            net +
-                            (t.type === "in" || t.type === "RECEIVE" || t.type === "ADJUSTMENT_ADD"
-                              ? t.quantity
-                              : -t.quantity)
-                          )
-                        }, 0)}{" "}
-                        units
-                      </span>
-                    </div>
-                  </div>
-                </CardFooter>
               </Card>
             </motion.div>
           </TabsContent>
@@ -1748,20 +1272,19 @@ export default function WarehouseReportsPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
-              className="grid gap-4 md:grid-cols-2"
             >
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div>
-                      <CardTitle>Product Categories</CardTitle>
-                      <CardDescription>Distribution of products by category</CardDescription>
+                      <CardTitle>Stock Value by Category</CardTitle>
+                      <CardDescription>Distribution of stock value across different categories</CardDescription>
                     </div>
                     <PieChart className="h-5 w-5 text-muted-foreground" />
                   </div>
                 </CardHeader>
-                <CardContent className="h-[300px]">
-                  {chartData.categoryDistribution ? (
+                <CardContent className="h-[400px]">
+                  {chartData.categoryDistribution && chartData.categoryDistribution.labels.length > 0 ? (
                     <Pie
                       data={chartData.categoryDistribution}
                       options={{
@@ -1780,94 +1303,9 @@ export default function WarehouseReportsPage() {
                     />
                   ) : (
                     <div className="flex items-center justify-center h-full">
-                      <p className="text-muted-foreground">No category data available</p>
+                      <p className="text-muted-foreground">No data available</p>
                     </div>
                   )}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle>Category Value Distribution</CardTitle>
-                      <CardDescription>Stock value by product category</CardDescription>
-                    </div>
-                    <DollarSign className="h-5 w-5 text-muted-foreground" />
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {stockData.valueByCategory.map((category, index) => (
-                      <motion.div
-                        key={category.category}
-                        className="space-y-2"
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{
-                          opacity: 1,
-                          x: 0,
-                          transition: { delay: 0.1 * index, duration: 0.3 },
-                        }}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <div
-                              className="h-3 w-3 rounded-full"
-                              style={{
-                                backgroundColor: [
-                                  "rgba(99, 102, 241, 0.7)",
-                                  "rgba(168, 85, 247, 0.7)",
-                                  "rgba(236, 72, 153, 0.7)",
-                                  "rgba(239, 68, 68, 0.7)",
-                                  "rgba(249, 115, 22, 0.7)",
-                                  "rgba(234, 179, 8, 0.7)",
-                                  "rgba(34, 197, 94, 0.7)",
-                                  "rgba(16, 185, 129, 0.7)",
-                                  "rgba(6, 182, 212, 0.7)",
-                                  "rgba(59, 130, 246, 0.7)",
-                                ][index % 10],
-                              }}
-                            ></div>
-                            <span className="text-sm font-medium">{category.category}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm">${category.value.toFixed(2)}</span>
-                            <Badge variant="outline" className="ml-2">
-                              {(
-                                (category.value / stockData.valueByCategory.reduce((sum, c) => sum + c.value, 0)) *
-                                100
-                              ).toFixed(1)}
-                              %
-                            </Badge>
-                          </div>
-                        </div>
-                        <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
-                          <motion.div
-                            className="h-full"
-                            style={{
-                              backgroundColor: [
-                                "rgba(99, 102, 241, 0.7)",
-                                "rgba(168, 85, 247, 0.7)",
-                                "rgba(236, 72, 153, 0.7)",
-                                "rgba(239, 68, 68, 0.7)",
-                                "rgba(249, 115, 22, 0.7)",
-                                "rgba(234, 179, 8, 0.7)",
-                                "rgba(34, 197, 94, 0.7)",
-                                "rgba(16, 185, 129, 0.7)",
-                                "rgba(6, 182, 212, 0.7)",
-                                "rgba(59, 130, 246, 0.7)",
-                              ][index % 10],
-                            }}
-                            initial={{ width: 0 }}
-                            animate={{
-                              width: `${(category.value / stockData.valueByCategory[0].value) * 100}%`,
-                              transition: { delay: 0.1 * index + 0.2, duration: 0.5 },
-                            }}
-                          ></motion.div>
-                        </div>
-                      </motion.div>
-                    ))}
-                  </div>
                 </CardContent>
               </Card>
             </motion.div>
@@ -1884,107 +1322,36 @@ export default function WarehouseReportsPage() {
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div>
-                      <CardTitle>Stock by Location</CardTitle>
-                      <CardDescription>Distribution of inventory across warehouse locations</CardDescription>
+                      <CardTitle>Stock Value by Location</CardTitle>
+                      <CardDescription>Distribution of stock value across different locations</CardDescription>
                     </div>
                     <Boxes className="h-5 w-5 text-muted-foreground" />
                   </div>
                 </CardHeader>
-                <CardContent>
-                  <div className="grid gap-6 md:grid-cols-2">
-                    <div className="h-[300px]">
-                      {chartData.stockByLocation ? (
-                        <Doughnut
-                          data={chartData.stockByLocation}
-                          options={{
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {
-                              legend: {
-                                display: false,
-                              },
-                            },
-                            animation: {
-                              animateScale: true,
-                              animateRotate: true,
-                            },
-                          }}
-                        />
-                      ) : (
-                        <div className="flex items-center justify-center h-full">
-                          <p className="text-muted-foreground">No location data available</p>
-                        </div>
-                      )}
+                <CardContent className="h-[400px]">
+                  {chartData.stockByLocation && chartData.stockByLocation.labels.length > 0 ? (
+                    <Bar
+                      data={chartData.stockByLocation}
+                      options={{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                          y: {
+                            beginAtZero: true,
+                          },
+                        },
+                        plugins: {
+                          legend: {
+                            display: false,
+                          },
+                        },
+                      }}
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center h-full">
+                      <p className="text-muted-foreground">No data available</p>
                     </div>
-
-                    <div className="space-y-4">
-                      {stockData.valueByLocation.map((location, index) => (
-                        <motion.div
-                          key={location.location}
-                          className="space-y-2"
-                          initial={{ opacity: 0, x: 20 }}
-                          animate={{
-                            opacity: 1,
-                            x: 0,
-                            transition: { delay: 0.1 * index, duration: 0.3 },
-                          }}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <div
-                                className="h-3 w-3 rounded-full"
-                                style={{
-                                  backgroundColor: [
-                                    "rgba(59, 130, 246, 0.7)",
-                                    "rgba(16, 185, 129, 0.7)",
-                                    "rgba(249, 115, 22, 0.7)",
-                                    "rgba(168, 85, 247, 0.7)",
-                                    "rgba(236, 72, 153, 0.7)",
-                                    "rgba(234, 179, 8, 0.7)",
-                                    "rgba(99, 102, 241, 0.7)",
-                                    "rgba(6, 182, 212, 0.7)",
-                                  ][index % 8],
-                                }}
-                              ></div>
-                              <span className="text-sm font-medium">{location.location}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm">${location.value.toFixed(2)}</span>
-                              <Badge variant="outline" className="ml-2">
-                                {(
-                                  (location.value / stockData.valueByLocation.reduce((sum, l) => sum + l.value, 0)) *
-                                  100
-                                ).toFixed(1)}
-                                %
-                              </Badge>
-                            </div>
-                          </div>
-                          <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
-                            <motion.div
-                              className="h-full"
-                              style={{
-                                backgroundColor: [
-                                  "rgba(59, 130, 246, 0.7)",
-                                  "rgba(16, 185, 129, 0.7)",
-                                  "rgba(249, 115, 22, 0.7)",
-                                  "rgba(168, 85, 247, 0.7)",
-                                  "rgba(236, 72, 153, 0.7)",
-                                  "rgba(234, 179, 8, 0.7)",
-                                  "rgba(99, 102, 241, 0.7)",
-                                  "rgba(6, 182, 212, 0.7)",
-                                ][index % 8],
-                              }}
-                              initial={{ width: 0 }}
-                              animate={{
-                                width: `${(location.value / stockData.valueByLocation[0].value) * 100}%`,
-                                transition: { delay: 0.1 * index + 0.2, duration: 0.5 },
-                              }}
-                            ></motion.div>
-                          </div>
-                        </motion.div>
-                      ))}
-                    </div>
-                  </div>
+                  )}
                 </CardContent>
               </Card>
             </motion.div>
@@ -1994,4 +1361,3 @@ export default function WarehouseReportsPage() {
     </motion.div>
   )
 }
-

@@ -26,6 +26,9 @@ export interface StockItem {
 }
 
 export interface StockTransaction {
+  metadata: {}
+  updatedAt: Date
+  stockItem: any
   id: string
   stockItemId: string
   type: "RECEIVE" | "ISSUE"

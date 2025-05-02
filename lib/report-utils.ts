@@ -1,9 +1,8 @@
 import { getProducts, getStockTransactions, getSupplierNames } from "@/lib/db"
 import { prisma } from "@/lib/prisma"
-// IndexedDB fallback
 
 // Fetch suppliers from Prisma or IndexedDB as a fallback
-import { Supplier } from "@/types"; // Adjust the path to where the Supplier type is defined
+import { Supplier } from "@/types"; 
 
 export async function getSuppliers(): Promise<{ id: string; name: string }[]> {
   try {
@@ -13,19 +12,22 @@ export async function getSuppliers(): Promise<{ id: string; name: string }[]> {
     }
 
     const suppliers = await response.json();
-    return suppliers.suppliers; // Assuming the API returns { suppliers, total, page, limit }
+    return suppliers.suppliers; 
   } catch (error) {
     console.error("Error fetching suppliers:", error);
 
     // Fall back to IndexedDB
     const idbSuppliers = await getSupplierNames();
     return idbSuppliers.map((name, index) => ({
-      id: `fallback-${index}`, // Generate a fallback ID
-      name: name, // Use the string as the name
+      id: `fallback-${index}`, 
+      name: name, 
     }));
   }
 }
-export async function getStockItems(): Promise<{ name: string; quantity: number; status: string }[]> {
+export async function getStockItems(p0: { statuses: string[]; }): Promise<{
+  location: any;
+  sku: any; name: string; quantity: number; status: string 
+}[]> {
   const response = await fetch("/api/reports/stock-items");
   if (!response.ok) {
     throw new Error("Failed to fetch stock items");
@@ -45,7 +47,7 @@ export async function calculateInventoryValue(): Promise<number> {
     return data.inventoryValue;
   } catch (error) {
     console.error("Error calculating inventory value:", error);
-    return 0; // Return a fallback value
+    return 0; 
   }
 }
 // Calculate stock turnover rate (approximation based on transactions)
@@ -69,7 +71,7 @@ export async function calculateStockTurnoverRate(): Promise<number> {
     const thirtyDayTransactions = idbTransactions.filter((t) => new Date(t.createdAt) >= thirtyDaysAgo);
 
     const outTransactions = thirtyDayTransactions.filter((t) => t.type === "out");
-    const stockItems = await getStockItems();
+    const stockItems = await getStockItems({ statuses: ["In Stock", "Out of Stock"] });
     const totalInventory = stockItems.reduce((sum, item) => sum + item.quantity, 0);
 
     const outgoingUnits = outTransactions.reduce((sum, t) => sum + t.quantity, 0);
@@ -312,7 +314,7 @@ export async function getOrdersBySupplier(): Promise<{ name: string; orders: num
 export async function getWarehouseCapacityUtilization() {
   try {
     // Get all stock items
-    const stockItems = await getStockItems()
+    const stockItems = await getStockItems({ statuses: ["In Stock", "Out of Stock"] })
 
     // Group items by location
     const locationGroups: Record<string, number> = {}

@@ -1,106 +1,97 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { motion, AnimatePresence } from "framer-motion"
-import {
-  PlusIcon,
-  SearchIcon,
-  FilterIcon,
-  Loader2Icon,
-  PackageIcon,
-  ArrowUpDownIcon,
-  XIcon,
-  EditIcon,
-  TrashIcon,
-  AlertCircleIcon,
-} from "lucide-react"
+import type React from "react"
 
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
+import { ProductsTable } from "@/components/products-table"
+import { ProductForm } from "@/components/product-form"
+import { NetworkStatus } from "@/components/network-status"
+import { SyncManager } from "@/components/sync-manager"
+import { registerServiceWorker } from "@/app/service-worker"
+import { checkStorageQuota, getProducts, getProductStats, getStockStats, getSupplierNames } from "@/lib/db"
+import { AlertCircle, HardDrive, Search, X, FilterIcon } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { toast } from "@/components/ui/use-toast"
-import { NetworkStatus } from "@/components/network-status"
-import { SyncManager } from "@/components/sync-manager"
-import { WarehouseProductForm } from "@/components/warehouse-product-form"
-import { getProducts, deleteProduct, getProductCategories, getProductVendors } from "@/lib/product-service"
-import { initializeDatabase } from "@/lib/db-utils"
-import { GlobalSyncIndicator } from "@/components/global-sync-indicator"
-import type { Product } from "@/types"
+import type { Product } from "@/lib/db"
+import Link from "next/link"
 
-export default function WarehouseInventoryPage() {
+export default function InventoryPage() {
+  const [open, setOpen] = useState(false)
+  const [editProduct, setEditProduct] = useState<Product | null>(null)
+  const [storageInfo, setStorageInfo] = useState<any>(null)
+  const [showStorageWarning, setShowStorageWarning] = useState(false)
   const [products, setProducts] = useState<Product[]>([])
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
-  const [isFilterOpen, setIsFilterOpen] = useState(false)
-  const [activeTab, setActiveTab] = useState("all")
-  const [sortConfig, setSortConfig] = useState<{
-    key: keyof Product | null
-    direction: "ascending" | "descending"
-  }>({ key: null, direction: "ascending" })
+  const [stats, setStats] = useState({
+    total: 0,
+    inStock: 0,
+    lowStock: 0,
+    outOfStock: 0,
+    categories: [] as string[],
+    vendors: [] as string[],
+  })
 
   // Filter states
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
   const [selectedVendors, setSelectedVendors] = useState<string[]>([])
   const [priceRange, setPriceRange] = useState({ min: "", max: "" })
-  const [categories, setCategories] = useState<string[]>([])
-  const [vendors, setVendors] = useState<string[]>([])
+  const [stockFilter, setStockFilter] = useState<string | null>(null)
+  const [isFilterOpen, setIsFilterOpen] = useState(false)
 
-  // Initialize database when component mounts
-  useEffect(() => {
-    const init = async () => {
-      try {
-        await initializeDatabase()
-      } catch (error) {
-        console.error("Error initializing database:", error)
-      }
-    }
+  // Register service worker
+  registerServiceWorker()
 
-    init()
-  }, [])
-
-  // Load products, categories, and vendors
+  // Load products and stats
   useEffect(() => {
     const loadData = async () => {
+      setIsLoading(true)
       try {
-        setIsLoading(true)
+        // Check storage quota
+        // const info = await checkStorageQuota()
+        // setStorageInfo(info)
+
+        // // Show warning if storage usage is above 80%
+        // if (info && info.percentUsed > 80) {
+        //   setShowStorageWarning(true)
+        // }
 
         // Load products
-        const productData = await getProducts()
-        setProducts(productData)
-        setFilteredProducts(productData)
+        const data = await getProducts()
+        setProducts(data)
+        setFilteredProducts(data)
 
-        // Load categories and vendors
-        const categoryData = await getProductCategories()
-        setCategories(categoryData)
+        // Get supplier names for the product form
+        const supplierNames = await getSupplierNames()
 
-        const vendorData = await getProductVendors()
-        setVendors(vendorData)
+        // Calculate stats
+        const productStats = await getProductStats()
+
+        // Get stock stats to update the In Stock card
+        const stockStats = await getStockStats()
+
+        // Merge stock stats with product stats
+        setStats({
+          ...productStats,
+          // Use stock data for in-stock counts
+          inStock: stockStats.totalItems - stockStats.lowStockItems - stockStats.outOfStockItems,
+          lowStock: stockStats.lowStockItems,
+          outOfStock: stockStats.outOfStockItems,
+          // Use supplier names from the suppliers page
+          vendors: supplierNames,
+          categories: productStats.categories.filter((category): category is string => category !== undefined),
+        })
       } catch (error) {
         console.error("Error loading data:", error)
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "Failed to load products. Please try again.",
-        })
       } finally {
         setIsLoading(false)
       }
@@ -109,155 +100,160 @@ export default function WarehouseInventoryPage() {
     loadData()
   }, [])
 
-  // Apply filters and sorting
+  // Apply filters
   useEffect(() => {
-    let results = [...products]
+    let results = products
 
-    // Apply search filter
+    // Search filter
     if (searchTerm) {
       const term = searchTerm.toLowerCase()
       results = results.filter(
         (product) =>
           product.name.toLowerCase().includes(term) ||
           product.sku.toLowerCase().includes(term) ||
-          (product.description && product.description.toLowerCase().includes(term)),
+          product.description?.toLowerCase().includes(term),
       )
     }
 
-    // Apply tab filter
-    if (activeTab !== "all") {
-      switch (activeTab) {
-        case "in-stock":
-          results = results.filter((product) => product.quantity > 0)
+    // Category filter
+    if (selectedCategories.length > 0) {
+      results = results.filter((product) => product.category && selectedCategories.includes(product.category))
+    }
+
+    // Vendor filter
+    if (selectedVendors.length > 0) {
+      results = results.filter((product) => product.vendor && selectedVendors.includes(product.vendor))
+    }
+
+    // Price range filter
+    if (priceRange.min) {
+      results = results.filter((product) => product.price >= Number(priceRange.min))
+    }
+    if (priceRange.max) {
+      results = results.filter((product) => product.price <= Number(priceRange.max))
+    }
+
+    // Stock status filter
+    if (stockFilter) {
+      switch (stockFilter) {
+        case "inStock":
+          results = results.filter((product) => product.quantity > 10)
           break
-        case "out-of-stock":
+        case "lowStock":
+          results = results.filter((product) => product.quantity > 0 && product.quantity <= 10)
+          break
+        case "outOfStock":
           results = results.filter((product) => product.quantity === 0)
           break
       }
     }
 
-    // Apply category filter
-    if (selectedCategories.length > 0) {
-      results = results.filter((product) => product.category && selectedCategories.includes(product.category))
-    }
-
-    // Apply vendor filter
-    if (selectedVendors.length > 0) {
-      results = results.filter((product) => product.vendor && selectedVendors.includes(product.vendor))
-    }
-
-    // Apply price range filter
-    if (priceRange.min && !isNaN(Number(priceRange.min))) {
-      results = results.filter((product) => product.price >= Number(priceRange.min))
-    }
-    if (priceRange.max && !isNaN(Number(priceRange.max))) {
-      results = results.filter((product) => product.price <= Number(priceRange.max))
-    }
-
-    // Apply sorting
-    if (sortConfig.key) {
-      results.sort((a, b) => {
-        if (a[sortConfig.key!] < b[sortConfig.key!]) {
-          return sortConfig.direction === "ascending" ? -1 : 1
-        }
-        if (a[sortConfig.key!] > b[sortConfig.key!]) {
-          return sortConfig.direction === "ascending" ? 1 : -1
-        }
-        return 0
-      })
-    }
-
     setFilteredProducts(results)
-  }, [products, searchTerm, activeTab, selectedCategories, selectedVendors, priceRange, sortConfig])
+  }, [searchTerm, selectedCategories, selectedVendors, priceRange, stockFilter, products])
 
-  // Handle sorting
-  const requestSort = (key: keyof Product) => {
-    let direction: "ascending" | "descending" = "ascending"
-    if (sortConfig.key === key && sortConfig.direction === "ascending") {
-      direction = "descending"
-    }
-    setSortConfig({ key, direction })
+  // Handle product saved (added or updated)
+  const handleProductSaved = (product: Product) => {
+    setProducts((prev) => {
+      // Check if product already exists
+      const exists = prev.some((p) => p.id === product.id)
+
+      if (exists) {
+        // Update existing product
+        return prev.map((p) => (p.id === product.id ? product : p))
+      } else {
+        // Add new product
+        return [product, ...prev]
+      }
+    })
+
+    // We don't need to update stock stats here anymore as they come from the stock page
+    // Just update categories and vendors if they're new
+    setStats((prev) => {
+      const newStats = { ...prev }
+
+      // Add category and vendor if they're new
+      if (product.category && !newStats.categories.includes(product.category)) {
+        newStats.categories.push(product.category)
+      }
+      if (product.vendor && !newStats.vendors.includes(product.vendor)) {
+        newStats.vendors.push(product.vendor)
+      }
+
+      return newStats
+    })
+
+    // Reset edit product
+    setEditProduct(null)
   }
 
-  // Handle checkbox changes
+  // Handle edit button click
+  const handleEdit = (product: Product) => {
+    setEditProduct(product)
+    setOpen(true)
+  }
+
+  // Handle add button click
+  const handleAdd = () => {
+    setEditProduct(null)
+    setOpen(true)
+  }
+
+  // Handle delete
+  const handleDelete = (productId: string) => {
+    // Find the product to get its details for stats update
+    const productToDelete = products.find((p) => p.id === productId)
+
+    if (productToDelete) {
+      // Update products list
+      setProducts((prev) => prev.filter((p) => p.id !== productId))
+
+      // Update stats
+      setStats((prev) => {
+        const newStats = { ...prev }
+        newStats.total -= 1
+
+        if (productToDelete.quantity === 0) {
+          newStats.outOfStock -= 1
+        } else if (productToDelete.quantity <= 10) {
+          newStats.lowStock -= 1
+        } else {
+          newStats.inStock -= 1
+        }
+
+        return newStats
+      })
+    }
+  }
+
+  // Handle search input change
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value)
+  }
+
+  // Clear search
+  const clearSearch = () => {
+    setSearchTerm("")
+  }
+
+  // Handle category filter change
   const handleCategoryChange = (category: string) => {
     setSelectedCategories((prev) =>
       prev.includes(category) ? prev.filter((c) => c !== category) : [...prev, category],
     )
   }
 
+  // Handle vendor filter change
   const handleVendorChange = (vendor: string) => {
     setSelectedVendors((prev) => (prev.includes(vendor) ? prev.filter((v) => v !== vendor) : [...prev, vendor]))
   }
 
   // Clear all filters
   const clearFilters = () => {
-    setSearchTerm("")
     setSelectedCategories([])
     setSelectedVendors([])
     setPriceRange({ min: "", max: "" })
+    setStockFilter(null)
     setIsFilterOpen(false)
-  }
-
-  // Handle product operations
-  const handleAddSuccess = () => {
-    setIsAddDialogOpen(false)
-    // Refresh products
-    getProducts().then((data) => {
-      setProducts(data)
-
-      // Refresh categories and vendors
-      getProductCategories().then(setCategories)
-      getProductVendors().then(setVendors)
-
-      toast({
-        title: "Product Added",
-        description: "The product has been added successfully.",
-      })
-    })
-  }
-
-  const handleEditSuccess = () => {
-    setIsEditDialogOpen(false)
-    setSelectedProduct(null)
-    // Refresh products
-    getProducts().then((data) => {
-      setProducts(data)
-
-      // Refresh categories and vendors
-      getProductCategories().then(setCategories)
-      getProductVendors().then(setVendors)
-
-      toast({
-        title: "Product Updated",
-        description: "The product has been updated successfully.",
-      })
-    })
-  }
-
-  const handleEdit = (product: Product) => {
-    setSelectedProduct(product)
-    setIsEditDialogOpen(true)
-  }
-
-  const handleDelete = async (id: string) => {
-    if (confirm("Are you sure you want to delete this product? This action cannot be undone.")) {
-      try {
-        await deleteProduct(id)
-        setProducts((prev) => prev.filter((product) => product.id !== id))
-        toast({
-          title: "Product Deleted",
-          description: "The product has been deleted successfully.",
-        })
-      } catch (error) {
-        console.error("Error deleting product:", error)
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "Failed to delete product. Please try again.",
-        })
-      }
-    }
   }
 
   // Count active filters
@@ -265,80 +261,153 @@ export default function WarehouseInventoryPage() {
     selectedCategories.length > 0,
     selectedVendors.length > 0,
     priceRange.min || priceRange.max,
+    stockFilter !== null,
   ].filter(Boolean).length
 
-  // Render loading state
-  if (isLoading) {
-    return (
-      <div className="flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Inventory Management</h1>
-            <p className="text-muted-foreground">Manage your product inventory</p>
-          </div>
-        </div>
-        <div className="flex items-center justify-center p-12">
-          <Loader2Icon className="h-12 w-12 animate-spin text-primary" />
-        </div>
-      </div>
-    )
-  }
+  // Get out of stock products
+  const outOfStockProducts = products.filter((p) => p.quantity === 0)
 
   return (
-    <div className="flex flex-col gap-4">
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="flex items-center justify-between"
-      >
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Inventory Management</h1>
-          <p className="text-muted-foreground">Manage your product inventory</p>
-        </div>
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-2xl font-bold tracking-tight">Inventory Management</h1>
         <div className="flex items-center gap-2">
           <NetworkStatus />
+          <Button onClick={handleAdd}>Add Product</Button>
+        </div>
+      </div>
 
-          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <PlusIcon className="mr-2 h-4 w-4" />
-                Add Product
+      {showStorageWarning && storageInfo && (
+        <Alert variant="warning">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Storage Warning</AlertTitle>
+          <AlertDescription className="flex items-center justify-between">
+            <span>Your local storage is {storageInfo.percentUsed}% full. Consider syncing and clearing old data.</span>
+            <div className="flex items-center gap-2 text-sm">
+              <HardDrive className="h-4 w-4" />
+              <span>
+                {storageInfo.used} / {storageInfo.total}
+              </span>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Products</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{isLoading ? "..." : stats.total}</div>
+            <p className="text-xs text-muted-foreground">
+              {isLoading ? "Loading..." : `${stats.categories.length} categories, ${stats.vendors.length} vendors`}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">In Stock</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{isLoading ? "..." : stats.inStock}</div>
+            <p className="text-xs text-muted-foreground">
+              {isLoading ? "Loading..." : `${Math.round((stats.inStock / stats.total) * 100) || 0}% of products`}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">Based on stock page data</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Low Stock</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{isLoading ? "..." : stats.lowStock}</div>
+            <p className="text-xs text-muted-foreground">
+              {isLoading ? "Loading..." : `${Math.round((stats.lowStock / stats.total) * 100) || 0}% of products`}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">Based on stock page data</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Out of Stock</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{isLoading ? "..." : stats.outOfStock}</div>
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">
+                {isLoading ? "Loading..." : `${Math.round((stats.outOfStock / stats.total) * 100) || 0}% of products`}
+              </p>
+              {stats.outOfStock > 0 && (
+                <Button variant="outline" size="sm" asChild className="mt-1">
+                  <Link href="/stock">Restock Items</Link>
+                </Button>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Based on stock page data</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Categories</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{isLoading ? "..." : stats.categories.length}</div>
+            <p className="text-xs text-muted-foreground">
+              {isLoading ? "Loading..." : `Most items in ${stats.categories[0] || "N/A"}`}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Out of Stock Products Card */}
+      {outOfStockProducts.length > 0 && (
+        <Card className="border-dashed border-amber-300">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-lg">Out of Stock Products</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {outOfStockProducts.map((product) => (
+                <div key={product.id} className="flex items-center justify-between rounded-md border p-3">
+                  <div>
+                    <p className="font-medium">{product.name}</p>
+                    <p className="text-xs text-muted-foreground">SKU: {product.sku}</p>
+                  </div>
+                  <Button variant="outline" size="sm" asChild>
+                    <Link href={`/stock?product=${product.id}`} className="flex items-center gap-1">
+                      Restock
+                    </Link>
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="flex flex-col gap-4 md:flex-row">
+        <div className="flex w-full items-center space-x-2 md:w-1/3">
+          <div className="relative w-full">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder="Search products by name or SKU..."
+              className="w-full pl-8"
+              value={searchTerm}
+              onChange={handleSearchChange}
+            />
+            {searchTerm && (
+              <Button variant="ghost" size="icon" className="absolute right-1 top-1 h-7 w-7" onClick={clearSearch}>
+                <X className="h-4 w-4" />
+                <span className="sr-only">Clear search</span>
               </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[600px]">
-              <DialogHeader>
-                <DialogTitle>Add New Product</DialogTitle>
-                <DialogDescription>Create a new product in your inventory</DialogDescription>
-              </DialogHeader>
-              <WarehouseProductForm onSuccess={handleAddSuccess} />
-            </DialogContent>
-          </Dialog>
-
-          <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-            <DialogContent className="sm:max-w-[600px]">
-              <DialogHeader>
-                <DialogTitle>Edit Product</DialogTitle>
-                <DialogDescription>Update product information</DialogDescription>
-              </DialogHeader>
-              {selectedProduct && <WarehouseProductForm initialData={selectedProduct} onSuccess={handleEditSuccess} />}
-            </DialogContent>
-          </Dialog>
-        </div>
-      </motion.div>
-
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="relative w-full md:w-96">
-          <SearchIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search products..."
-            className="pl-8"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+            )}
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center space-x-2">
           <Popover open={isFilterOpen} onOpenChange={setIsFilterOpen}>
             <PopoverTrigger asChild>
               <Button variant="outline" className="relative">
@@ -360,45 +429,51 @@ export default function WarehouseInventoryPage() {
                   </Button>
                 </div>
 
-                <div>
-                  <h5 className="mb-2 text-sm font-medium">Category</h5>
-                  <div className="space-y-2">
-                    {categories.map((category) => (
-                      <div key={category} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`category-${category}`}
-                          checked={selectedCategories.includes(category)}
-                          onCheckedChange={() => handleCategoryChange(category)}
-                        />
-                        <Label htmlFor={`category-${category}`} className="text-sm font-normal">
-                          {category}
-                        </Label>
+                {stats.categories.length > 0 && (
+                  <>
+                    <div>
+                      <h5 className="mb-2 text-sm font-medium">Category</h5>
+                      <div className="max-h-32 overflow-y-auto space-y-2">
+                        {stats.categories.map((category) => (
+                          <div key={category} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`category-${category}`}
+                              checked={selectedCategories.includes(category)}
+                              onCheckedChange={() => handleCategoryChange(category)}
+                            />
+                            <Label htmlFor={`category-${category}`} className="text-sm font-normal">
+                              {category}
+                            </Label>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                </div>
+                    </div>
+                    <Separator />
+                  </>
+                )}
 
-                <Separator />
-
-                <div>
-                  <h5 className="mb-2 text-sm font-medium">Vendor</h5>
-                  <div className="space-y-2">
-                    {vendors.map((vendor) => (
-                      <div key={vendor} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`vendor-${vendor}`}
-                          checked={selectedVendors.includes(vendor)}
-                          onCheckedChange={() => handleVendorChange(vendor)}
-                        />
-                        <Label htmlFor={`vendor-${vendor}`} className="text-sm font-normal">
-                          {vendor}
-                        </Label>
+                {stats.vendors.length > 0 && (
+                  <>
+                    <div>
+                      <h5 className="mb-2 text-sm font-medium">Vendor</h5>
+                      <div className="max-h-32 overflow-y-auto space-y-2">
+                        {stats.vendors.map((vendor) => (
+                          <div key={vendor} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`vendor-${vendor}`}
+                              checked={selectedVendors.includes(vendor)}
+                              onCheckedChange={() => handleVendorChange(vendor)}
+                            />
+                            <Label htmlFor={`vendor-${vendor}`} className="text-sm font-normal">
+                              {vendor}
+                            </Label>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                </div>
-
-                <Separator />
+                    </div>
+                    <Separator />
+                  </>
+                )}
 
                 <div>
                   <h5 className="mb-2 text-sm font-medium">Price Range</h5>
@@ -411,7 +486,7 @@ export default function WarehouseInventoryPage() {
                         id="min-price"
                         type="number"
                         min="0"
-                        placeholder="0"
+                        placeholder="Min"
                         value={priceRange.min}
                         onChange={(e) => setPriceRange({ ...priceRange, min: e.target.value })}
                         className="h-8"
@@ -425,13 +500,33 @@ export default function WarehouseInventoryPage() {
                         id="max-price"
                         type="number"
                         min="0"
-                        placeholder="1000"
+                        placeholder="Max"
                         value={priceRange.max}
                         onChange={(e) => setPriceRange({ ...priceRange, max: e.target.value })}
                         className="h-8"
                       />
                     </div>
                   </div>
+                </div>
+
+                <Separator />
+
+                <div>
+                  <h5 className="mb-2 text-sm font-medium">Stock Status</h5>
+                  <Select
+                    value={stockFilter || "all"}
+                    onValueChange={(value) => setStockFilter(value === "all" ? null : value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="All stock levels" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All stock levels</SelectItem>
+                      <SelectItem value="inStock">In Stock (10)</SelectItem>
+                      <SelectItem value="lowStock">Low Stock (1-10)</SelectItem>
+                      <SelectItem value="outOfStock">Out of Stock (0)</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <Button onClick={() => setIsFilterOpen(false)}>Apply Filters</Button>
@@ -443,199 +538,57 @@ export default function WarehouseInventoryPage() {
 
       {/* Active filters display */}
       {activeFilterCount > 0 && (
-        <motion.div
-          initial={{ opacity: 0, height: 0 }}
-          animate={{ opacity: 1, height: "auto" }}
-          exit={{ opacity: 0, height: 0 }}
-          className="flex flex-wrap gap-2"
-        >
+        <div className="flex flex-wrap gap-2">
           {selectedCategories.map((category) => (
             <Badge key={`badge-category-${category}`} variant="secondary" className="flex items-center gap-1">
               Category: {category}
-              <XIcon className="h-3 w-3 cursor-pointer" onClick={() => handleCategoryChange(category)} />
+              <X className="h-3 w-3 cursor-pointer" onClick={() => handleCategoryChange(category)} />
             </Badge>
           ))}
 
           {selectedVendors.map((vendor) => (
             <Badge key={`badge-vendor-${vendor}`} variant="secondary" className="flex items-center gap-1">
               Vendor: {vendor}
-              <XIcon className="h-3 w-3 cursor-pointer" onClick={() => handleVendorChange(vendor)} />
+              <X className="h-3 w-3 cursor-pointer" onClick={() => handleVendorChange(vendor)} />
             </Badge>
           ))}
 
           {(priceRange.min || priceRange.max) && (
             <Badge variant="secondary" className="flex items-center gap-1">
               Price: {priceRange.min || "0"} - {priceRange.max || "∞"}
-              <XIcon className="h-3 w-3 cursor-pointer" onClick={() => setPriceRange({ min: "", max: "" })} />
+              <X className="h-3 w-3 cursor-pointer" onClick={() => setPriceRange({ min: "", max: "" })} />
             </Badge>
           )}
-        </motion.div>
+
+          {stockFilter && (
+            <Badge variant="secondary" className="flex items-center gap-1">
+              Status:{" "}
+              {stockFilter === "inStock" ? "In Stock" : stockFilter === "lowStock" ? "Low Stock" : "Out of Stock"}
+              <X className="h-3 w-3 cursor-pointer" onClick={() => setStockFilter(null)} />
+            </Badge>
+          )}
+        </div>
       )}
 
-      <Tabs defaultValue="all" value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
-          <TabsTrigger value="all">All Products</TabsTrigger>
-          <TabsTrigger value="in-stock">In Stock</TabsTrigger>
-          <TabsTrigger value="out-of-stock">Out of Stock</TabsTrigger>
-        </TabsList>
-        <TabsContent value="all" className="mt-4">
-          <ProductsTable
-            products={filteredProducts}
-            onEdit={handleEdit}
-            onDelete={handleDelete}
-            sortConfig={sortConfig}
-            onSort={requestSort}
-          />
-        </TabsContent>
-        <TabsContent value="in-stock" className="mt-4">
-          <ProductsTable
-            products={filteredProducts}
-            onEdit={handleEdit}
-            onDelete={handleDelete}
-            sortConfig={sortConfig}
-            onSort={requestSort}
-          />
-        </TabsContent>
-        <TabsContent value="out-of-stock" className="mt-4">
-          <ProductsTable
-            products={filteredProducts}
-            onEdit={handleEdit}
-            onDelete={handleDelete}
-            sortConfig={sortConfig}
-            onSort={requestSort}
-          />
-        </TabsContent>
-      </Tabs>
+      <ProductsTable
+        products={filteredProducts}
+        isLoading={isLoading}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
+        onProductSaved={handleProductSaved}
+      />
+
+      <ProductForm
+        open={open}
+        onOpenChange={setOpen}
+        onProductSaved={handleProductSaved}
+        editProduct={editProduct}
+        categories={stats.categories}
+        vendors={stats.vendors}
+      />
 
       <SyncManager />
-      <GlobalSyncIndicator />
     </div>
-  )
-}
-
-interface ProductsTableProps {
-  products: Product[]
-  onEdit: (product: Product) => void
-  onDelete: (id: string) => void
-  sortConfig: {
-    key: keyof Product | null
-    direction: "ascending" | "descending"
-  }
-  onSort: (key: keyof Product) => void
-}
-
-function ProductsTable({ products, onEdit, onDelete, sortConfig, onSort }: ProductsTableProps) {
-  const getSortIcon = (key: keyof Product) => {
-    if (sortConfig.key !== key) {
-      return <ArrowUpDownIcon className="ml-1 h-4 w-4" />
-    }
-    return sortConfig.direction === "ascending" ? (
-      <ArrowUpDownIcon className="ml-1 h-4 w-4 text-primary" />
-    ) : (
-      <ArrowUpDownIcon className="ml-1 h-4 w-4 text-primary rotate-180" />
-    )
-  }
-
-  if (products.length === 0) {
-    return (
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex h-40 flex-col items-center justify-center gap-2">
-            <AlertCircleIcon className="h-8 w-8 text-muted-foreground" />
-            <p className="text-center text-muted-foreground">No products found</p>
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle>Products</CardTitle>
-        <CardDescription>
-          {products.length} products • Total value: $
-          {products.reduce((sum, product) => sum + product.price * product.quantity, 0).toFixed(2)}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="p-0">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="cursor-pointer" onClick={() => onSort("name")}>
-                <div className="flex items-center">Name {getSortIcon("name")}</div>
-              </TableHead>
-              <TableHead className="cursor-pointer" onClick={() => onSort("sku")}>
-                <div className="flex items-center">SKU {getSortIcon("sku")}</div>
-              </TableHead>
-              <TableHead className="cursor-pointer" onClick={() => onSort("category")}>
-                <div className="flex items-center">Category {getSortIcon("category")}</div>
-              </TableHead>
-              <TableHead className="cursor-pointer" onClick={() => onSort("price")}>
-                <div className="flex items-center">Price {getSortIcon("price")}</div>
-              </TableHead>
-              <TableHead className="cursor-pointer" onClick={() => onSort("quantity")}>
-                <div className="flex items-center">Quantity {getSortIcon("quantity")}</div>
-              </TableHead>
-              <TableHead className="cursor-pointer" onClick={() => onSort("vendor")}>
-                <div className="flex items-center">Vendor {getSortIcon("vendor")}</div>
-              </TableHead>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            <AnimatePresence>
-              {products.map((product) => (
-                <motion.tr
-                  key={product.id}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="group"
-                >
-                  <TableCell className="font-medium">
-                    <div className="flex items-center gap-2">
-                      <PackageIcon className="h-4 w-4 text-muted-foreground" />
-                      {product.name}
-                    </div>
-                  </TableCell>
-                  <TableCell>{product.sku}</TableCell>
-                  <TableCell>{product.category}</TableCell>
-                  <TableCell>${product.price.toFixed(2)}</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={product.quantity === 0 ? "destructive" : product.quantity < 10 ? "outline" : "default"}
-                    >
-                      {product.quantity}
-                    </Badge>
-                    {product.syncStatus === "pending" && (
-                      <Badge variant="outline" className="ml-2">
-                        Pending Sync
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>{product.vendor || "—"}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
-                      <Button variant="ghost" size="icon" onClick={() => onEdit(product)}>
-                        <EditIcon className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => onDelete(product.id)}>
-                        <TrashIcon className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </motion.tr>
-              ))}
-            </AnimatePresence>
-          </TableBody>
-        </Table>
-      </CardContent>
-      <CardFooter className="flex justify-between py-4">
-        <div className="text-xs text-muted-foreground">Showing {products.length} products</div>
-      </CardFooter>
-    </Card>
   )
 }
 
