@@ -1,21 +1,35 @@
+<<<<<<< HEAD
+import { NextAuthOptions } from "next-auth";
+import GoogleProvider from "next-auth/providers/google";
+
+// Extend the Session type
+=======
 import jwt from "jsonwebtoken";
 import { cookies } from "next/headers";
 import prisma from "@/lib/prisma";
 import { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 
+>>>>>>> 9d7b4d2b0a8552f1e9554309a204b1bd283f49be
 declare module "next-auth" {
   interface Session {
     user: {
       id: string;
+<<<<<<< HEAD
+      email?: string;
+      name?: string;
+=======
       name?: string | null;
       email?: string | null;
       image?: string | null;
       role?: UserRole;
+>>>>>>> 9d7b4d2b0a8552f1e9554309a204b1bd283f49be
     };
   }
 }
 
+<<<<<<< HEAD
+=======
 export type UserRole = "admin" | "warehouse_manager" | "sales_person";
 
 export interface User {
@@ -31,6 +45,7 @@ const SECRET_KEY = process.env.JWT_SECRET || "default_secret_key";
 
 export const JWT_SECRET = process.env.JWT_SECRET || "default_secret_key";
 export const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
+>>>>>>> 9d7b4d2b0a8552f1e9554309a204b1bd283f49be
 export const authOptions: NextAuthOptions = {
   providers: [
     GoogleProvider({
@@ -41,8 +56,12 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async session({ session, token }) {
       if (session.user) {
+<<<<<<< HEAD
+        session.user.id = token.sub || ""; // Ensure `id` is always set
+=======
         session.user.id = token.sub as string;
         session.user.role = token.role as UserRole;
+>>>>>>> 9d7b4d2b0a8552f1e9554309a204b1bd283f49be
       }
       return session;
     },
@@ -53,6 +72,9 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
   },
+<<<<<<< HEAD
+};
+=======
 };
 
 
@@ -141,3 +163,4 @@ export function hasPermission(userRole: UserRole, permission: string): boolean {
   const allowedRoles = permissionMap[permission] || [];
   return checkAccess(userRole, allowedRoles);
 }
+>>>>>>> 9d7b4d2b0a8552f1e9554309a204b1bd283f49be
