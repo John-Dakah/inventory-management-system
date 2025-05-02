@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect } from "react"
 import { v4 as uuidv4 } from "uuid"
 import { useSearchParams } from "next/navigation"
@@ -57,11 +56,9 @@ import {
   getStockItems,
   forceSyncAllData,
 } from "@/lib/db"
-
 export default function StockPage() {
   const searchParams = useSearchParams()
   const productId = searchParams.get("product")
-
   const [searchTerm, setSearchTerm] = useState("")
   const [stockItems, setStockItems] = useState<StockItem[]>([])
   const [filteredItems, setFilteredItems] = useState<StockItem[]>([])
@@ -198,7 +195,7 @@ export default function StockPage() {
         // Auto-retry up to 3 times if online
         if (isOnline() && loadingRetries < 3) {
           setLoadingRetries((prev) => prev + 1)
-          setTimeout(loadData, 2000) // Retry after 2 seconds
+          setTimeout(loadData, 2000) 
         } else {
           toast({
             variant: "destructive",

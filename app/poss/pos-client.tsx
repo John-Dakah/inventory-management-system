@@ -587,6 +587,7 @@ const removeItem = (itemId: string) => {
 
   return (
     <><div className="flex flex-col gap-4">
+      {/* Add content here */}
     </div><div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Point of Sale</h1>

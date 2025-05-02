@@ -28,7 +28,7 @@ const sidebarLinks = [
   },
   {
     title: "Point of Sale",
-    href: "/pos",
+    href: "/poss",
     icon: ShoppingCart,
   },
   {

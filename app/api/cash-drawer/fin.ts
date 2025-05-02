@@ -1,27 +1,22 @@
-import { NextResponse } from "next/server"
-import prisma from "@/lib/prisma"
+ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
+import prisma from "@/lib/prisma"
 
-// 🔐 Temporarily bypass session check for development purposes
+// 🔐 Helper to enforce authentication
 async function requireAuth(request: Request) {
   const session = await auth(request)
-
   if (!session || !session.user?.id) {
-    console.warn("⚠️ No valid session. Using fallback session for development.")
-    return {
-      user: {
-        id: "dev-user",
-        name: "Developer",
-        email: "dev@example.com",
-      },
-    }
+    console.warn("Unauthorized access attempt detected.")
+    return null
   }
-
   return session
 }
 
 export async function GET(request: Request) {
   const session = await requireAuth(request)
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
 
   try {
     const openSession = await prisma.registerSession.findFirst({
@@ -146,8 +141,12 @@ export async function GET(request: Request) {
   }
 }
 
+// 📤 POST — Open, close, or payout actions
 export async function POST(request: Request) {
   const session = await requireAuth(request)
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
 
   try {
     const data = await request.json()
@@ -268,3 +267,5 @@ export async function POST(request: Request) {
     )
   }
 }
+// Compare this snippet from app/api/pos/cash-drawer/route.ts:
+// import { NextResponse } from "next/server" 
