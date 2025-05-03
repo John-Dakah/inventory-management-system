@@ -37,7 +37,7 @@ const sidebarLinks = [
   },
   {
     title: "Users",
-    href: "/users",
+    href: "/dashboard/users",
     icon: Users,
   },
   {

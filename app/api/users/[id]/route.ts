@@ -42,6 +42,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         visits: true,
         totalSpent: true,
         createdAt: true,
+        address: true,
+        notes: true,
         transactions: {
           select: {
             id: true,
@@ -102,6 +104,23 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
     // Get update data from request body
     const updateData = await req.json()
+
+    // Check if email is being changed and if it already exists
+    if (updateData.email && updateData.email !== existingUser.email) {
+      const emailExists = await prisma.oUR_USER.findFirst({
+        where: {
+          email: updateData.email,
+          id: { not: userId },
+        },
+      })
+
+      if (emailExists) {
+        return NextResponse.json(
+          { error: "A user with this email already exists" },
+          { status: 409 }, // Conflict status code
+        )
+      }
+    }
 
     // Update the user
     const updatedUser = await prisma.oUR_USER.update({

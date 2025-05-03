@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { cookies } from "next/headers"
+import bcrypt from "bcryptjs"
 
 // Get all users created by the current admin (excluding the admin)
 export async function GET(req: NextRequest) {
@@ -74,9 +75,22 @@ export async function POST(req: NextRequest) {
     // Get user data from request body
     const userData = await req.json()
 
+    // Check if email already exists
+    const existingUser = await prisma.oUR_USER.findUnique({
+      where: {
+        email: userData.email,
+      },
+    })
+
+    if (existingUser) {
+      return NextResponse.json(
+        { error: "A user with this email already exists" },
+        { status: 409 }, // Conflict status code
+      )
+    }
+
     // Hash the password if provided
     if (userData.password) {
-      const bcrypt = require("bcryptjs")
       userData.password = await bcrypt.hash(userData.password, 10)
     }
 
