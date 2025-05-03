@@ -1,8 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { PrismaClient } from "@prisma/client"
-
-// Initialize Prisma client
-const prisma = new PrismaClient()
+import { prisma } from "@/lib/prisma" // Adjust the import path if needed
 
 /**
  * GET handler for fetching a specific product by ID
@@ -46,7 +43,6 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     const id = params.id
     const data = await request.json()
 
-    // Check if the product exists
     const existingProduct = await prisma.product.findUnique({
       where: { id },
     })
@@ -55,7 +51,6 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: "Product not found" }, { status: 404 })
     }
 
-    // Update the product
     const updatedProduct = await prisma.product.update({
       where: { id },
       data: {
@@ -85,7 +80,6 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
   try {
     const id = params.id
 
-    // Check if the product exists
     const existingProduct = await prisma.product.findUnique({
       where: { id },
     })
@@ -94,7 +88,6 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
       return NextResponse.json({ error: "Product not found" }, { status: 404 })
     }
 
-    // Check if there are related stock items
     const relatedStockItems = await prisma.stockItem.findMany({
       where: {
         OR: [{ name: existingProduct.name }, { sku: existingProduct.sku }],
@@ -113,7 +106,6 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
       )
     }
 
-    // Delete the product
     await prisma.product.delete({
       where: { id },
     })

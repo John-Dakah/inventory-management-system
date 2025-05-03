@@ -1,16 +1,10 @@
 "use client"
 
-import type React from "react"
-
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { ProductsTable } from "@/components/products-table"
 import { ProductForm } from "@/components/product-form"
-import { NetworkStatus } from "@/components/network-status"
-import { SyncManager } from "@/components/sync-manager"
-import { registerServiceWorker } from "@/app/service-worker"
-import { checkStorageQuota, getProducts, getProductStats, getStockStats, getSupplierNames } from "@/lib/db"
-import { AlertCircle, HardDrive, Search, X, FilterIcon } from "lucide-react"
+import { AlertCircle, Search, X, FilterIcon } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -20,17 +14,29 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
-import type { Product } from "@/lib/db"
 import Link from "next/link"
+
+type Product = {
+  id: string
+  name: string
+  description: string | null
+  sku: string
+  price: number
+  quantity: number
+  category: string | null
+  vendor: string | null
+  imageUrl: string | null
+  createdAt: string
+  updatedAt: string
+}
 
 export default function InventoryPage() {
   const [open, setOpen] = useState(false)
   const [editProduct, setEditProduct] = useState<Product | null>(null)
-  const [storageInfo, setStorageInfo] = useState<any>(null)
-  const [showStorageWarning, setShowStorageWarning] = useState(false)
   const [products, setProducts] = useState<Product[]>([])
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [stats, setStats] = useState({
     total: 0,
@@ -48,102 +54,89 @@ export default function InventoryPage() {
   const [stockFilter, setStockFilter] = useState<string | null>(null)
   const [isFilterOpen, setIsFilterOpen] = useState(false)
 
-  // Register service worker
-  registerServiceWorker()
+  const fetchProducts = async () => {
+    setIsLoading(true)
+    setError(null)
 
-  // Load products and stats
+    try {
+      const response = await fetch("/api/products")
+      if (!response.ok) {
+        throw new Error(`Error fetching products: ${response.statusText}`)
+      }
+      const result = await response.json()
+      return result.data || []
+    } catch (error) {
+      console.error("Error fetching products:", error)
+      setError("Failed to load products. Please try again.")
+      return []
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   useEffect(() => {
     const loadData = async () => {
-      setIsLoading(true)
-      try {
-        // Check storage quota
-        // const info = await checkStorageQuota()
-        // setStorageInfo(info)
+      const productData = await fetchProducts()
+      setProducts(productData)
+      setFilteredProducts(productData)
 
-        // // Show warning if storage usage is above 80%
-        // if (info && info.percentUsed > 80) {
-        //   setShowStorageWarning(true)
-        // }
+      const categories = [...new Set(productData.map((p: { category: any }) => p.category).filter(Boolean))] as string[]
+      const vendors = [...new Set(productData.map((p: { vendor: any }) => p.vendor).filter(Boolean))] as string[]
 
-        // Load products
-        const data = await getProducts()
-        setProducts(data)
-        setFilteredProducts(data)
+      const inStock = productData.filter((p: { quantity: number }) => p.quantity > 10).length
+      const lowStock = productData.filter((p: { quantity: number }) => p.quantity > 0 && p.quantity <= 10).length
+      const outOfStock = productData.filter((p: { quantity: number }) => p.quantity === 0).length
 
-        // Get supplier names for the product form
-        const supplierNames = await getSupplierNames()
-
-        // Calculate stats
-        const productStats = await getProductStats()
-
-        // Get stock stats to update the In Stock card
-        const stockStats = await getStockStats()
-
-        // Merge stock stats with product stats
-        setStats({
-          ...productStats,
-          // Use stock data for in-stock counts
-          inStock: stockStats.totalItems - stockStats.lowStockItems - stockStats.outOfStockItems,
-          lowStock: stockStats.lowStockItems,
-          outOfStock: stockStats.outOfStockItems,
-          // Use supplier names from the suppliers page
-          vendors: supplierNames,
-          categories: productStats.categories.filter((category): category is string => category !== undefined),
-        })
-      } catch (error) {
-        console.error("Error loading data:", error)
-      } finally {
-        setIsLoading(false)
-      }
+      setStats({
+        total: productData.length,
+        inStock,
+        lowStock,
+        outOfStock,
+        categories,
+        vendors,
+      })
     }
 
     loadData()
   }, [])
 
-  // Apply filters
   useEffect(() => {
     let results = products
 
-    // Search filter
     if (searchTerm) {
       const term = searchTerm.toLowerCase()
       results = results.filter(
-        (product) =>
+        product =>
           product.name.toLowerCase().includes(term) ||
           product.sku.toLowerCase().includes(term) ||
-          product.description?.toLowerCase().includes(term),
-      )
+          (product.description && product.description.toLowerCase().includes(term)))
     }
 
-    // Category filter
     if (selectedCategories.length > 0) {
-      results = results.filter((product) => product.category && selectedCategories.includes(product.category))
+      results = results.filter(product => product.category && selectedCategories.includes(product.category))
     }
 
-    // Vendor filter
     if (selectedVendors.length > 0) {
-      results = results.filter((product) => product.vendor && selectedVendors.includes(product.vendor))
+      results = results.filter(product => product.vendor && selectedVendors.includes(product.vendor))
     }
 
-    // Price range filter
     if (priceRange.min) {
-      results = results.filter((product) => product.price >= Number(priceRange.min))
+      results = results.filter(product => product.price >= Number(priceRange.min))
     }
     if (priceRange.max) {
-      results = results.filter((product) => product.price <= Number(priceRange.max))
+      results = results.filter(product => product.price <= Number(priceRange.max))
     }
 
-    // Stock status filter
     if (stockFilter) {
       switch (stockFilter) {
         case "inStock":
-          results = results.filter((product) => product.quantity > 10)
+          results = results.filter(product => product.quantity > 10)
           break
         case "lowStock":
-          results = results.filter((product) => product.quantity > 0 && product.quantity <= 10)
+          results = results.filter(product => product.quantity > 0 && product.quantity <= 10)
           break
         case "outOfStock":
-          results = results.filter((product) => product.quantity === 0)
+          results = results.filter(product => product.quantity === 0)
           break
       }
     }
@@ -151,103 +144,118 @@ export default function InventoryPage() {
     setFilteredProducts(results)
   }, [searchTerm, selectedCategories, selectedVendors, priceRange, stockFilter, products])
 
-  // Handle product saved (added or updated)
-  const handleProductSaved = (product: Product) => {
-    setProducts((prev) => {
-      // Check if product already exists
-      const exists = prev.some((p) => p.id === product.id)
+  const handleProductSaved = async (product: Product) => {
+    setError(null)
+    try {
+      const method = product.id ? "PUT" : "POST"
+      const url = product.id ? `/api/products/${product.id}` : "/api/products"
+      
+      const response = await fetch(url, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(product),
+      })
 
-      if (exists) {
-        // Update existing product
-        return prev.map((p) => (p.id === product.id ? product : p))
-      } else {
-        // Add new product
-        return [product, ...prev]
-      }
-    })
-
-    // We don't need to update stock stats here anymore as they come from the stock page
-    // Just update categories and vendors if they're new
-    setStats((prev) => {
-      const newStats = { ...prev }
-
-      // Add category and vendor if they're new
-      if (product.category && !newStats.categories.includes(product.category)) {
-        newStats.categories.push(product.category)
-      }
-      if (product.vendor && !newStats.vendors.includes(product.vendor)) {
-        newStats.vendors.push(product.vendor)
+      if (!response.ok) {
+        throw new Error(`Error saving product: ${response.statusText}`)
       }
 
-      return newStats
-    })
+      const savedProduct = await response.json()
 
-    // Reset edit product
-    setEditProduct(null)
+      setProducts(prev => {
+        const exists = prev.some(p => p.id === savedProduct.id)
+        return exists 
+          ? prev.map(p => p.id === savedProduct.id ? savedProduct : p)
+          : [savedProduct, ...prev]
+      })
+
+      setStats(prev => {
+        const newStats = { ...prev }
+        if (!products.some(p => p.id === savedProduct.id)) {
+          newStats.total += 1
+        }
+        if (savedProduct.category && !newStats.categories.includes(savedProduct.category)) {
+          newStats.categories.push(savedProduct.category)
+        }
+        if (savedProduct.vendor && !newStats.vendors.includes(savedProduct.vendor)) {
+          newStats.vendors.push(savedProduct.vendor)
+        }
+        return newStats
+      })
+
+      setEditProduct(null)
+      setOpen(false)
+    } catch (error) {
+      console.error("Error saving product:", error)
+      setError("Failed to save product. Please try again.")
+    }
   }
 
-  // Handle edit button click
+  const handleDelete = async (productId: string) => {
+    setError(null)
+    try {
+      const productToDelete = products.find(p => p.id === productId)
+      const response = await fetch(`/api/products/${productId}`, {
+        method: "DELETE",
+      })
+
+      if (!response.ok) {
+        throw new Error(`Error deleting product: ${response.statusText}`)
+      }
+
+      if (productToDelete) {
+        setProducts(prev => prev.filter(p => p.id !== productId))
+        setStats(prev => {
+          const newStats = { ...prev }
+          newStats.total -= 1
+          if (productToDelete.quantity === 0) {
+            newStats.outOfStock -= 1
+          } else if (productToDelete.quantity <= 10) {
+            newStats.lowStock -= 1
+          } else {
+            newStats.inStock -= 1
+          }
+          return newStats
+        })
+      }
+    } catch (error) {
+      console.error("Error deleting product:", error)
+      setError("Failed to delete product. Please try again.")
+    }
+  }
+
   const handleEdit = (product: Product) => {
     setEditProduct(product)
     setOpen(true)
   }
 
-  // Handle add button click
   const handleAdd = () => {
     setEditProduct(null)
     setOpen(true)
   }
 
-  // Handle delete
-  const handleDelete = (productId: string) => {
-    // Find the product to get its details for stats update
-    const productToDelete = products.find((p) => p.id === productId)
-
-    if (productToDelete) {
-      // Update products list
-      setProducts((prev) => prev.filter((p) => p.id !== productId))
-
-      // Update stats
-      setStats((prev) => {
-        const newStats = { ...prev }
-        newStats.total -= 1
-
-        if (productToDelete.quantity === 0) {
-          newStats.outOfStock -= 1
-        } else if (productToDelete.quantity <= 10) {
-          newStats.lowStock -= 1
-        } else {
-          newStats.inStock -= 1
-        }
-
-        return newStats
-      })
-    }
-  }
-
-  // Handle search input change
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value)
   }
 
-  // Clear search
   const clearSearch = () => {
     setSearchTerm("")
   }
 
-  // Handle category filter change
   const handleCategoryChange = (category: string) => {
-    setSelectedCategories((prev) =>
-      prev.includes(category) ? prev.filter((c) => c !== category) : [...prev, category],
+    setSelectedCategories(prev =>
+      prev.includes(category) ? prev.filter(c => c !== category) : [...prev, category]
     )
   }
 
-  // Handle vendor filter change
   const handleVendorChange = (vendor: string) => {
-    setSelectedVendors((prev) => (prev.includes(vendor) ? prev.filter((v) => v !== vendor) : [...prev, vendor]))
+    setSelectedVendors(prev => 
+      prev.includes(vendor) ? prev.filter(v => v !== vendor) : [...prev, vendor]
+    )
   }
 
-  // Clear all filters
   const clearFilters = () => {
     setSelectedCategories([])
     setSelectedVendors([])
@@ -256,7 +264,6 @@ export default function InventoryPage() {
     setIsFilterOpen(false)
   }
 
-  // Count active filters
   const activeFilterCount = [
     selectedCategories.length > 0,
     selectedVendors.length > 0,
@@ -264,34 +271,25 @@ export default function InventoryPage() {
     stockFilter !== null,
   ].filter(Boolean).length
 
-  // Get out of stock products
-  const outOfStockProducts = products.filter((p) => p.quantity === 0)
+  const outOfStockProducts = products.filter(p => p.quantity === 0)
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold tracking-tight">Inventory Management</h1>
         <div className="flex items-center gap-2">
-          <NetworkStatus />
           <Button onClick={handleAdd}>Add Product</Button>
         </div>
       </div>
 
-      {showStorageWarning && storageInfo && (
-        <Alert variant="warning">
+      {error && (
+        <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Storage Warning</AlertTitle>
-          <AlertDescription className="flex items-center justify-between">
-            <span>Your local storage is {storageInfo.percentUsed}% full. Consider syncing and clearing old data.</span>
-            <div className="flex items-center gap-2 text-sm">
-              <HardDrive className="h-4 w-4" />
-              <span>
-                {storageInfo.used} / {storageInfo.total}
-              </span>
-            </div>
-          </AlertDescription>
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
+
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <Card>
@@ -314,7 +312,6 @@ export default function InventoryPage() {
             <p className="text-xs text-muted-foreground">
               {isLoading ? "Loading..." : `${Math.round((stats.inStock / stats.total) * 100) || 0}% of products`}
             </p>
-            <p className="text-xs text-muted-foreground mt-1">Based on stock page data</p>
           </CardContent>
         </Card>
         <Card>
@@ -326,7 +323,6 @@ export default function InventoryPage() {
             <p className="text-xs text-muted-foreground">
               {isLoading ? "Loading..." : `${Math.round((stats.lowStock / stats.total) * 100) || 0}% of products`}
             </p>
-            <p className="text-xs text-muted-foreground mt-1">Based on stock page data</p>
           </CardContent>
         </Card>
         <Card>
@@ -345,7 +341,6 @@ export default function InventoryPage() {
                 </Button>
               )}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Based on stock page data</p>
           </CardContent>
         </Card>
         <Card>
@@ -522,7 +517,7 @@ export default function InventoryPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All stock levels</SelectItem>
-                      <SelectItem value="inStock">In Stock (10)</SelectItem>
+                      <SelectItem value="inStock">{"In Stock (>10)"}</SelectItem>
                       <SelectItem value="lowStock">Low Stock (1-10)</SelectItem>
                       <SelectItem value="outOfStock">Out of Stock (0)</SelectItem>
                     </SelectContent>
@@ -569,26 +564,30 @@ export default function InventoryPage() {
           )}
         </div>
       )}
-
       <ProductsTable
-        products={filteredProducts}
+        products={filteredProducts.map(product => ({
+          ...product,
+          description: product.description || "",
+        }))}
         isLoading={isLoading}
         onEdit={handleEdit}
         onDelete={handleDelete}
-        onProductSaved={handleProductSaved}
       />
 
       <ProductForm
         open={open}
         onOpenChange={setOpen}
         onProductSaved={handleProductSaved}
-        editProduct={editProduct}
+        editProduct={editProduct ? { 
+          ...editProduct, 
+          description: editProduct.description || "", 
+          category: editProduct.category || "", 
+          vendor: editProduct.vendor || "",
+          imageUrl: editProduct.imageUrl || ""
+        } : null}
         categories={stats.categories}
         vendors={stats.vendors}
       />
-
-      <SyncManager />
     </div>
   )
 }
-
