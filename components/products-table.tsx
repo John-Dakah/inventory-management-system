@@ -102,7 +102,6 @@ export function ProductsTable({ products, isLoading, onEdit, onDelete, onProduct
               <TableHead className="text-right">Price</TableHead>
               <TableHead className="text-right">Quantity</TableHead>
               <TableHead className="hidden md:table-cell">Vendor</TableHead>
-              <TableHead className="hidden md:table-cell">Sync Status</TableHead>
               <TableHead className="w-[80px]"></TableHead>
             </TableRow>
           </TableHeader>
@@ -117,7 +116,7 @@ export function ProductsTable({ products, isLoading, onEdit, onDelete, onProduct
                   <span className={product.quantity === 0 ? "text-red-500 font-medium" : ""}>{product.quantity}</span>
                 </TableCell>
                 <TableCell className="hidden md:table-cell">{product.vendor || "-"}</TableCell>
-                <TableCell className="hidden md:table-cell">{getSyncStatusBadge(product)}</TableCell>
+                
                 <TableCell>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>

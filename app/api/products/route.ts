@@ -1,18 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { PrismaClient } from "@prisma/client"
-
-// Initialize Prisma client
-const prisma = new PrismaClient()
+import { prisma } from "@/lib/prisma"
 
 /**
  * GET handler for fetching products
- * Supports search, filtering, and pagination
  */
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
 
-    // Parse query parameters
     const search = searchParams.get("search") || ""
     const category = searchParams.get("category") || undefined
     const vendor = searchParams.get("vendor") || undefined
@@ -21,7 +16,6 @@ export async function GET(request: NextRequest) {
     const page = Number.parseInt(searchParams.get("page") || "1")
     const limit = Number.parseInt(searchParams.get("limit") || "50")
 
-    // Build filter conditions
     const whereClause: any = {}
 
     if (search) {
@@ -37,7 +31,6 @@ export async function GET(request: NextRequest) {
     if (inStock) whereClause.quantity = { gt: 0 }
     if (outOfStock) whereClause.quantity = { equals: 0 }
 
-    // Execute query with pagination
     const [products, total] = await Promise.all([
       prisma.product.findMany({
         where: whereClause,
@@ -48,7 +41,6 @@ export async function GET(request: NextRequest) {
       prisma.product.count({ where: whereClause }),
     ])
 
-    // Map the response data
     const response = {
       data: products.map((product) => ({
         id: product.id,
@@ -85,7 +77,6 @@ export async function POST(request: NextRequest) {
   try {
     const data = await request.json()
 
-    // Validate required fields
     if (!data.name || !data.sku) {
       return NextResponse.json(
         { error: "Missing required fields", details: "Name and SKU are required" },
@@ -93,10 +84,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create the product
     const product = await prisma.product.create({
       data: {
-        id: data.id, // Use provided ID or let Prisma generate one
+        id: data.id,
         name: data.name,
         description: data.description || "",
         sku: data.sku,
@@ -114,7 +104,6 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error("Error in POST /api/products:", error)
 
-    // Check for unique constraint violations
     if (error.code === "P2002") {
       return NextResponse.json(
         {
