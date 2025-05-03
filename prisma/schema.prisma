@@ -1,11 +1,7 @@
-// This is your Prisma schema file
-// Learn more: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
   output   = "../node_modules/.prisma/client"
 }
-
 
 datasource db {
   provider = "postgresql"
@@ -36,7 +32,9 @@ model OUR_USER {
   notes      String?
   status     String   @default("ACTIVE")
   role       UserRole
-  createdById  String? 
+  createdById  String?
+  createdBy    OUR_USER?  @relation("CreatedUsers", fields: [createdById], references: [id])
+  createdUsers OUR_USER[] @relation("CreatedUsers")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   transactions Transaction[]

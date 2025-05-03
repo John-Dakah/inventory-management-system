@@ -1,24 +1,16 @@
-<<<<<<< HEAD
-import { NextAuthOptions } from "next-auth";
-import GoogleProvider from "next-auth/providers/google";
 
-// Extend the Session type
-=======
 import jwt from "jsonwebtoken";
 import { cookies } from "next/headers";
 import prisma from "@/lib/prisma";
 import { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 
->>>>>>> 9d7b4d2b0a8552f1e9554309a204b1bd283f49be
 declare module "next-auth" {
   interface Session {
     user: {
       id: string;
-<<<<<<< HEAD
       email?: string;
       name?: string;
-=======
       name?: string | null;
       email?: string | null;
       image?: string | null;
@@ -28,8 +20,6 @@ declare module "next-auth" {
   }
 }
 
-<<<<<<< HEAD
-=======
 export type UserRole = "admin" | "warehouse_manager" | "sales_person";
 
 export interface User {

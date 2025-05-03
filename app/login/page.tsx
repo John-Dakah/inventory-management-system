@@ -4,7 +4,7 @@ import type React from "react"
 
 import { useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Eye, EyeOff, Lock, Mail, Package, Building2, ShoppingCart, CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,9 +24,10 @@ export default function LoginPage() {
   const [role, setRole] = useState<UserRole | "">("")
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const [rememberMe, setRememberMe] = useState(false)
   const [step, setStep] = useState<"role" | "credentials">("role")
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const callbackUrl = searchParams.get("callbackUrl") || ""
   const { toast } = useToast()
 
   const handleRoleSelect = (selectedRole: UserRole) => {
@@ -73,18 +74,22 @@ export default function LoginPage() {
         description: `Welcome back, ${data.user.fullName}!`,
       })
 
-      // Redirect based on role
-      if (role === "admin"){
-        router.push("/settings")
+      // Redirect based on role or callback URL
+      if (callbackUrl) {
+        router.push(callbackUrl)
+      } else {
+        if (role === "admin") {
+          router.push("/settings")
+        } else if (role === "warehouse_manager") {
+          router.push("/warehouse")
+        } else if (role === "sales_person") {
+          router.push("/pos")
+        }
       }
-     if (role ==="warehouse_manager"){
-        router.push("/warehouse")
-      }
-      if (role ==="sales_person"){
-        router.push("/pos")
-      }
-    }
-     catch (error) {
+
+      // Force a refresh to update the UI
+      router.refresh()
+    } catch (error) {
       console.error("Login error:", error)
       toast({
         title: "Login failed",
@@ -234,7 +239,7 @@ export default function LoginPage() {
                       </button>
                     </div>
                   </div>
-                
+
                   <Button type="submit" className="w-full" disabled={isLoading}>
                     {isLoading ? (
                       <>
@@ -266,4 +271,3 @@ export default function LoginPage() {
     </div>
   )
 }
-

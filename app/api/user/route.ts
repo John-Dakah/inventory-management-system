@@ -1,24 +1,33 @@
 import { NextResponse } from "next/server"
-import prisma from "@/lib/prisma" // Assuming you're using Prisma as your ORM
-import { cookies } from "next/headers" // For accessing cookies in Next.js
+import prisma from "@/lib/prisma"
+import { cookies } from "next/headers"
 
 export async function GET() {
   try {
     // Retrieve the authentication cookie
-    const authCookie = cookies().get("auth")
+    const authCookies = await cookies();
+    const authCookie = authCookies.get("auth");
 
     if (!authCookie) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
 
-    // Parse the cookie to get user data (email, role, etc.)
-    const { email, role } = JSON.parse(authCookie.value)
+    // Parse the cookie to get user data
+    const { id } = JSON.parse(authCookie.value)
 
-    // Fetch user data from the database based on email and role
-    const user = await prisma.oUR_USER.findFirst({
+    // Fetch user data from the database
+    const user = await prisma.oUR_USER.findUnique({
       where: {
-        email,
-        role,
+        id,
+      },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        fullName: true,
+        phone: true,
+        department: true,
+        status: true,
       },
     })
 
@@ -30,20 +39,12 @@ export async function GET() {
     return NextResponse.json(
       {
         message: "User data fetched successfully",
-        user: {
-          id: user.id,
-          email: user.email,
-          role: user.role,
-          fullName: user.fullName,
-        },
+        user,
       },
-      { status: 200 }
+      { status: 200 },
     )
   } catch (error) {
     console.error("Error fetching user data:", error)
-    return NextResponse.json(
-      { error: "Error fetching user data" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Error fetching user data" }, { status: 500 })
   }
 }
