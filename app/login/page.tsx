@@ -81,7 +81,7 @@ export default function LoginPage() {
         if (role === "admin") {
           router.push("/settings")
         } else if (role === "warehouse_manager") {
-          router.push("/warehouse")
+          router.push("/warehouse/dashboard")
         } else if (role === "sales_person") {
           router.push("/pos")
         }

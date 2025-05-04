@@ -1,26 +1,27 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
-import prisma from "@/lib/prisma";
+import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
-    const token = await getToken({ req });
+    const cookieStore = await cookies()
+    const authCookie = cookieStore.get("auth")
 
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!authCookie) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
 
-    const user = await prisma.oUR_USER.findUnique({
-      where: { email: token.email ?? "" },
-    });
+    const session = JSON.parse(authCookie.value)
 
-    if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
-    }
-
-    return NextResponse.json({ id: user.id });
+    return NextResponse.json({
+      user: {
+        id: session.id,
+        email: session.email,
+        fullName: session.fullName,
+        role: session.role,
+      },
+    })
   } catch (error) {
-    console.error("Error fetching user:", error);
-    return NextResponse.json({ error: "Failed to fetch user" }, { status: 500 });
+    console.error("Error fetching user data:", error)
+    return NextResponse.json({ error: "Failed to fetch user data" }, { status: 500 })
   }
 }

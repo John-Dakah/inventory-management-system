@@ -38,6 +38,7 @@ CREATE TABLE "Product" (
     "imageUrl" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
+    "createdById" TEXT,
 
     CONSTRAINT "Product_pkey" PRIMARY KEY ("id")
 );
@@ -157,6 +158,12 @@ CREATE UNIQUE INDEX "StockItem_sku_key" ON "StockItem"("sku");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Transaction_reference_key" ON "Transaction"("reference");
+
+-- AddForeignKey
+ALTER TABLE "OUR_USER" ADD CONSTRAINT "OUR_USER_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "OUR_USER"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Product" ADD CONSTRAINT "Product_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "OUR_USER"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "StockTransaction" ADD CONSTRAINT "StockTransaction_stockItemId_fkey" FOREIGN KEY ("stockItemId") REFERENCES "StockItem"("id") ON DELETE SET NULL ON UPDATE CASCADE;

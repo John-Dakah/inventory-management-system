@@ -13,7 +13,7 @@ const sidebarLinks = [
   },
   {
     title: "Inventory",
-    href: "/inventory",
+    href: "/warehouse/dashboard",
     icon: Package,
   },
   {

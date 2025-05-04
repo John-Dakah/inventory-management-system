@@ -1,11 +1,8 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect } from "react"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { useForm } from "react-hook-form"
-import { z } from "zod"
-import { v4 as uuidv4 } from "uuid"
-import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
@@ -14,39 +11,31 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { toast } from "@/components/ui/use-toast"
-import { saveProduct } from "@/lib/db"
-import { useNetworkStatus } from "@/hooks/useNetworkStatus"
-import { Combobox } from "@/components/ui/combobox"
-import type { Product } from "@/lib/db"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { AlertCircle } from "lucide-react"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
-const productSchema = z.object({
-  name: z.string().min(2, { message: "Name must be at least 2 characters" }),
-  sku: z.string().min(1, { message: "SKU is required" }),
-  price: z.coerce.number().positive({ message: "Price must be positive" }),
-  quantity: z.coerce.number().int().nonnegative({ message: "Quantity must be a non-negative integer" }),
-  category: z.string().optional(),
-  vendor: z.string().optional(),
-  weight: z
-    .string()
-    .regex(/^[\d.]+[a-zA-Z]+$/, {
-      message: "Weight must be a number followed by a unit (e.g., 2kg, 500g)",
-    })
-    .optional(),
-  description: z.string().optional(),
-})
-
-type ProductFormValues = z.infer<typeof productSchema>
+type Product = {
+  id?: string
+  name: string
+  description: string
+  sku: string
+  price: number
+  quantity: number
+  category: string
+  vendor: string
+  imageUrl: string
+}
 
 interface ProductFormProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onProductSaved: (product: Product) => void
-  editProduct?: Product | null
+  editProduct: Product | null
   categories: string[]
   vendors: string[]
 }
@@ -56,297 +45,270 @@ export function ProductForm({
   onOpenChange,
   onProductSaved,
   editProduct,
-  categories = [],
-  vendors = [],
+  categories,
+  vendors,
 }: ProductFormProps) {
-  const isOnline = useNetworkStatus()
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const isEditing = !!editProduct
-
-  const form = useForm<ProductFormValues>({
-    resolver: zodResolver(productSchema),
-    defaultValues: {
-      name: "",
-      sku: "",
-      price: 0,
-      quantity: 0,
-      category: "",
-      vendor: "",
-      weight: "",
-      description: "",
-    },
+  const [product, setProduct] = useState<Product>({
+    name: "",
+    description: "",
+    sku: "",
+    price: 0,
+    quantity: 0,
+    category: "",
+    vendor: "",
+    imageUrl: "",
   })
+  const [errors, setErrors] = useState<Record<string, string>>({})
 
-  // Reset form when dialog opens/closes or when editProduct changes
   useEffect(() => {
-    if (open) {
-      if (editProduct) {
-        // If editing, populate form with product data
-        form.reset({
-          name: editProduct.name,
-          sku: editProduct.sku,
-          price: editProduct.price,
-          quantity: editProduct.quantity,
-          category: editProduct.category || "",
-          vendor: editProduct.vendor || "",
-          weight: editProduct.weight || "",
-          description: editProduct.description || "",
-        })
-      } else {
-        // If adding new product, reset to defaults
-        form.reset({
-          name: "",
-          sku: "",
-          price: 0,
-          quantity: 0,
-          category: "",
-          vendor: "",
-          weight: "",
-          description: "",
-        })
-      }
-    }
-  }, [open, editProduct, form])
-
-  async function onSubmit(data: ProductFormValues) {
-    setIsSubmitting(true)
-    try {
-      const now = new Date().toISOString()
-      const timestamp = Date.now()
-
-      // Create or update product
-      const product: Product = isEditing
-        ? {
-            ...editProduct!,
-            ...data,
-            updatedAt: now,
-            syncStatus: "pending",
-            modified: timestamp,
-          }
-        : {
-            id: uuidv4(),
-            ...data,
-            imageUrl: "",
-            createdAt: now,
-            updatedAt: now,
-            syncStatus: "pending",
-            modified: timestamp,
-          }
-
-      // Save to IndexedDB and add to sync queue
-      await saveProduct(product)
-
-      // Notify parent component
-      onProductSaved(product)
-
-      // Trigger sync if online
-      if (isOnline) {
-        try {
-          // Import dynamically to avoid circular dependencies
-          const { forceSync } = await import("@/lib/sync-service")
-          forceSync().catch((err) => console.error("Error triggering sync after product save:", err))
-        } catch (error) {
-          console.error("Could not trigger sync:", error)
-        }
-      }
-
-      // Show appropriate toast based on network status and operation
-      if (isOnline) {
-        toast({
-          title: isEditing ? "Product Updated" : "Product Added",
-          description: isEditing
-            ? "Product has been updated and will be synced with the server."
-            : "Product has been added and will be synced with the server.",
-        })
-      } else {
-        toast({
-          title: isEditing ? "Product Updated Locally" : "Product Added Locally",
-          description: "Changes have been saved locally and will be synced when you're back online.",
-        })
-      }
-
-      // Close dialog
-      onOpenChange(false)
-    } catch (error) {
-      console.error("Error saving product:", error)
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: `Failed to ${isEditing ? "update" : "add"} product. Please try again.`,
+    if (editProduct) {
+      setProduct(editProduct)
+    } else {
+      setProduct({
+        name: "",
+        description: "",
+        sku: "",
+        price: 0,
+        quantity: 0,
+        category: "",
+        vendor: "",
+        imageUrl: "",
       })
-    } finally {
-      setIsSubmitting(false)
     }
+    setErrors({})
+  }, [editProduct, open])
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target
+    setProduct((prev) => ({ ...prev, [name]: value }))
+
+    // Clear error when field is edited
+    if (errors[name]) {
+      setErrors((prev) => {
+        const newErrors = { ...prev }
+        delete newErrors[name]
+        return newErrors
+      })
+    }
+  }
+
+  const handleSelectChange = (name: string, value: string) => {
+    setProduct((prev) => ({ ...prev, [name]: value }))
+
+    // Clear error when field is edited
+    if (errors[name]) {
+      setErrors((prev) => {
+        const newErrors = { ...prev }
+        delete newErrors[name]
+        return newErrors
+      })
+    }
+  }
+
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {}
+
+    if (!product.name.trim()) {
+      newErrors.name = "Name is required"
+    }
+
+    if (!product.sku.trim()) {
+      newErrors.sku = "SKU is required"
+    }
+
+    if (isNaN(Number(product.price)) || Number(product.price) < 0) {
+      newErrors.price = "Price must be a positive number"
+    }
+
+    if (
+      isNaN(Number(product.quantity)) ||
+      Number(product.quantity) < 0 ||
+      !Number.isInteger(Number(product.quantity))
+    ) {
+      newErrors.quantity = "Quantity must be a positive integer"
+    }
+
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!validateForm()) {
+      return
+    }
+
+    const productToSave = {
+      ...product,
+      price: Number(product.price),
+      quantity: Number(product.quantity),
+    }
+
+    onProductSaved(productToSave)
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
-          <DialogTitle>{isEditing ? "Edit Product" : "Add New Product"}</DialogTitle>
+          <DialogTitle>{editProduct ? "Edit Product" : "Add New Product"}</DialogTitle>
           <DialogDescription>
-            {isEditing
+            {editProduct
               ? "Update the product details below."
-              : "Fill in the details to add a new product to your inventory."}
-            {!isOnline && (
-              <span className="mt-2 block text-amber-500">
-                You're currently offline. Changes will be saved locally and synced when you're back online.
-              </span>
-            )}
+              : "Fill in the details below to add a new product to your inventory."}
           </DialogDescription>
         </DialogHeader>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Product Name</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Product name" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="sku"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>SKU</FormLabel>
-                  <FormControl>
-                    <Input placeholder="SKU" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="price"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Price</FormLabel>
-                    <FormControl>
-                      <Input type="number" step="0.01" placeholder="0.00" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
+
+        <form onSubmit={handleSubmit} className="space-y-4 py-4">
+          {Object.keys(errors).length > 0 && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>Please fix the errors in the form before submitting.</AlertDescription>
+            </Alert>
+          )}
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Product Name</Label>
+              <Input
+                id="name"
+                name="name"
+                value={product.name}
+                onChange={handleChange}
+                className={errors.name ? "border-destructive" : ""}
               />
-              <FormField
-                control={form.control}
-                name="quantity"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Quantity</FormLabel>
-                    <FormControl>
-                      <Input type="number" placeholder="0" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="category"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Category</FormLabel>
-                    <FormControl>
-                      <Combobox
-                        options={categories.map((category) => ({ value: category, label: category }))}
-                        value={field.value}
-                        onChange={field.onChange}
-                        placeholder="Search or create category"
-                        createOption={true}
-                        emptyMessage="No categories found. Type to create a new one."
-                      />
-                    </FormControl>
-                    <FormMessage />
-                    <p className="text-xs text-muted-foreground">Search existing categories or create a new one</p>
-                  </FormItem>
-                )}
+
+            <div className="space-y-2">
+              <Label htmlFor="sku">SKU</Label>
+              <Input
+                id="sku"
+                name="sku"
+                value={product.sku}
+                onChange={handleChange}
+                className={errors.sku ? "border-destructive" : ""}
               />
-              <FormField
-                control={form.control}
-                name="vendor"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Vendor/Supplier</FormLabel>
-                    <FormControl>
-                      <Select value={field.value || ""} onValueChange={field.onChange}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select a supplier" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {vendors.length > 0 ? (
-                            vendors.map((vendor) => (
-                              <SelectItem key={vendor} value={vendor}>
-                                {vendor}
-                              </SelectItem>
-                            ))
-                          ) : (
-                            <SelectItem value="no-suppliers" disabled>
-                              No suppliers available. Add suppliers in the Suppliers page.
-                            </SelectItem>
-                          )}
-                        </SelectContent>
-                      </Select>
-                    </FormControl>
-                    <FormMessage />
-                    <p className="text-xs text-muted-foreground">Select from suppliers added in the Suppliers page</p>
-                  </FormItem>
-                )}
-              />
+              {errors.sku && <p className="text-sm text-destructive">{errors.sku}</p>}
             </div>
-            <FormField
-              control={form.control}
-              name="weight"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Weight (e.g., 2kg, 500g)</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Enter weight with unit" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="description">Description</Label>
+            <Textarea
+              id="description"
               name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Description</FormLabel>
-                  <FormControl>
-                    <Textarea placeholder="Product description" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
+              value={product.description}
+              onChange={handleChange}
+              rows={3}
             />
-            <DialogFooter>
-              <Button variant="outline" type="button" onClick={() => onOpenChange(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting
-                  ? isEditing
-                    ? "Updating..."
-                    : "Adding..."
-                  : isEditing
-                    ? "Update Product"
-                    : "Add Product"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </Form>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="price">Price</Label>
+              <Input
+                id="price"
+                name="price"
+                type="number"
+                step="0.01"
+                min="0"
+                value={product.price}
+                onChange={handleChange}
+                className={errors.price ? "border-destructive" : ""}
+              />
+              {errors.price && <p className="text-sm text-destructive">{errors.price}</p>}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="quantity">Quantity</Label>
+              <Input
+                id="quantity"
+                name="quantity"
+                type="number"
+                min="0"
+                step="1"
+                value={product.quantity}
+                onChange={handleChange}
+                className={errors.quantity ? "border-destructive" : ""}
+              />
+              {errors.quantity && <p className="text-sm text-destructive">{errors.quantity}</p>}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="category">Category</Label>
+              <Select value={product.category} onValueChange={(value) => handleSelectChange("category", value)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  {categories.map((category) => (
+                    <SelectItem key={category} value={category}>
+                      {category}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="new">+ Add new category</SelectItem>
+                </SelectContent>
+              </Select>
+              {product.category === "new" && (
+                <Input
+                  placeholder="Enter new category"
+                  className="mt-2"
+                  value=""
+                  onChange={(e) => handleSelectChange("category", e.target.value)}
+                />
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="vendor">Vendor</Label>
+              <Select value={product.vendor} onValueChange={(value) => handleSelectChange("vendor", value)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select vendor" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  {vendors.map((vendor) => (
+                    <SelectItem key={vendor} value={vendor}>
+                      {vendor}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="new">+ Add new vendor</SelectItem>
+                </SelectContent>
+              </Select>
+              {product.vendor === "new" && (
+                <Input
+                  placeholder="Enter new vendor"
+                  className="mt-2"
+                  value=""
+                  onChange={(e) => handleSelectChange("vendor", e.target.value)}
+                />
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="imageUrl">Image URL</Label>
+            <Input
+              id="imageUrl"
+              name="imageUrl"
+              value={product.imageUrl}
+              onChange={handleChange}
+              placeholder="https://example.com/image.jpg"
+            />
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="submit">{editProduct ? "Update Product" : "Add Product"}</Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   )

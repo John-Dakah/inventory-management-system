@@ -1,13 +1,20 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma" // Adjust the import path if needed
+import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
+import prisma from "@/lib/prisma"
 
-/**
- * GET handler for fetching a specific product by ID
- */
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: Request, { params }: { params: { id: string } }) {
   try {
+    const cookieStore = cookies()
+    const authCookie = cookieStore.get("auth")
+
+    if (!authCookie) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const session = JSON.parse(authCookie.value)
     const id = params.id
 
+    // Find the product
     const product = await prisma.product.findUnique({
       where: { id },
     })
@@ -16,33 +23,32 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: "Product not found" }, { status: 404 })
     }
 
-    return NextResponse.json({
-      id: product.id,
-      name: product.name,
-      description: product.description || "",
-      sku: product.sku,
-      price: product.price,
-      quantity: product.quantity,
-      category: product.category || "",
-      vendor: product.vendor || "",
-      imageUrl: product.imageUrl || "",
-      createdAt: product.createdAt.toISOString(),
-      updatedAt: product.updatedAt.toISOString(),
-    })
-  } catch (error: any) {
-    console.error(`Error in GET /api/products/${params.id}:`, error)
-    return NextResponse.json({ error: "Failed to fetch product", message: error.message }, { status: 500 })
+    // Check if user has permission to access this product
+    if (session.role !== "sales_person" && product.createdById !== session.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
+    }
+
+    return NextResponse.json(product)
+  } catch (error) {
+    console.error("Error fetching product:", error)
+    return NextResponse.json({ error: "Failed to fetch product" }, { status: 500 })
   }
 }
 
-/**
- * PUT handler for updating a product
- */
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: Request, { params }: { params: { id: string } }) {
   try {
+    const cookieStore = cookies()
+    const authCookie = cookieStore.get("auth")
+
+    if (!authCookie) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const session = JSON.parse(authCookie.value)
     const id = params.id
     const data = await request.json()
 
+    // Find the product first to check permissions
     const existingProduct = await prisma.product.findUnique({
       where: { id },
     })
@@ -51,35 +57,52 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: "Product not found" }, { status: 404 })
     }
 
-    const updatedProduct = await prisma.product.update({
+    // Check if user has permission to update this product
+    if (existingProduct.createdById !== session.id) {
+      return NextResponse.json({ error: "Unauthorized to update this product" }, { status: 403 })
+    }
+
+    // Update the product
+    const product = await prisma.product.update({
       where: { id },
       data: {
         name: data.name,
-        description: data.description,
+        description: data.description || null,
         sku: data.sku,
-        price: data.price !== undefined ? data.price : existingProduct.price,
-        quantity: data.quantity !== undefined ? data.quantity : existingProduct.quantity,
-        category: data.category,
-        vendor: data.vendor,
-        imageUrl: data.imageUrl,
-        updatedAt: new Date(),
+        price: Number.parseFloat(data.price),
+        quantity: Number.parseInt(data.quantity),
+        category: data.category || null,
+        vendor: data.vendor || null,
+        imageUrl: data.imageUrl || null,
       },
     })
 
-    return NextResponse.json(updatedProduct)
-  } catch (error: any) {
-    console.error(`Error in PUT /api/products/${params.id}:`, error)
-    return NextResponse.json({ error: "Failed to update product", message: error.message }, { status: 500 })
+    return NextResponse.json(product)
+  } catch (error) {
+    console.error("Error updating product:", error)
+
+    // Handle unique constraint violations
+    if (error.code === "P2002") {
+      return NextResponse.json({ error: "A product with this SKU already exists" }, { status: 400 })
+    }
+
+    return NextResponse.json({ error: "Failed to update product" }, { status: 500 })
   }
 }
 
-/**
- * DELETE handler for removing a product
- */
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: Request, { params }: { params: { id: string } }) {
   try {
+    const cookieStore = cookies()
+    const authCookie = cookieStore.get("auth")
+
+    if (!authCookie) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const session = JSON.parse(authCookie.value)
     const id = params.id
 
+    // Find the product first to check permissions
     const existingProduct = await prisma.product.findUnique({
       where: { id },
     })
@@ -88,31 +111,19 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
       return NextResponse.json({ error: "Product not found" }, { status: 404 })
     }
 
-    const relatedStockItems = await prisma.stockItem.findMany({
-      where: {
-        OR: [{ name: existingProduct.name }, { sku: existingProduct.sku }],
-      },
-      select: { id: true },
-    })
-
-    if (relatedStockItems.length > 0) {
-      return NextResponse.json(
-        {
-          error: "Cannot delete product",
-          message: "This product is associated with stock items and cannot be deleted",
-          relatedItems: relatedStockItems.length,
-        },
-        { status: 409 },
-      )
+    // Check if user has permission to delete this product
+    if (existingProduct.createdById !== session.id) {
+      return NextResponse.json({ error: "Unauthorized to delete this product" }, { status: 403 })
     }
 
+    // Delete the product
     await prisma.product.delete({
       where: { id },
     })
 
-    return new Response(null, { status: 204 })
-  } catch (error: any) {
-    console.error(`Error in DELETE /api/products/${params.id}:`, error)
-    return NextResponse.json({ error: "Failed to delete product", message: error.message }, { status: 500 })
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error("Error deleting product:", error)
+    return NextResponse.json({ error: "Failed to delete product" }, { status: 500 })
   }
 }

@@ -22,72 +22,81 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
-import { Edit, MoreHorizontal, Trash2, CloudOff, CloudIcon as CloudCheck, CloudIcon as CloudSync } from "lucide-react"
-import { deleteProduct } from "@/lib/db"
-import type { Product } from "@/lib/db"
+import { Edit, MoreHorizontal, Trash2 } from "lucide-react"
+import { formatCurrency } from "@/lib/utils"
+
+type Product = {
+  id: string
+  name: string
+  description: string
+  sku: string
+  price: number
+  quantity: number
+  category: string | null
+  vendor: string | null
+  imageUrl: string | null
+  createdAt: string
+  updatedAt: string
+}
 
 interface ProductsTableProps {
   products: Product[]
   isLoading: boolean
   onEdit: (product: Product) => void
   onDelete: (productId: string) => void
-  onProductSaved: (product: Product) => void
 }
 
-export function ProductsTable({ products, isLoading, onEdit, onDelete, onProductSaved }: ProductsTableProps) {
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-  const [productToDelete, setProductToDelete] = useState<Product | null>(null)
+export function ProductsTable({ products, isLoading, onEdit, onDelete }: ProductsTableProps) {
+  const [productToDelete, setProductToDelete] = useState<string | null>(null)
 
-  const handleDeleteClick = (product: Product) => {
-    setProductToDelete(product)
-    setDeleteDialogOpen(true)
+  const handleDeleteClick = (productId: string) => {
+    setProductToDelete(productId)
   }
 
-  const confirmDelete = async () => {
+  const handleDeleteConfirm = () => {
     if (productToDelete) {
-      try {
-        await deleteProduct(productToDelete.id)
-        onDelete(productToDelete.id)
-      } catch (error) {
-        console.error("Error deleting product:", error)
-        alert("Failed to delete product. Please try again.")
-      }
-      setDeleteDialogOpen(false)
+      onDelete(productToDelete)
       setProductToDelete(null)
     }
   }
 
-  const getSyncStatusBadge = (product: Product) => {
-    if (!product.syncStatus || product.syncStatus === "synced") {
+  const handleDeleteCancel = () => {
+    setProductToDelete(null)
+  }
+
+  const getStockStatus = (quantity: number) => {
+    if (quantity <= 0) {
+      return <Badge variant="destructive">Out of Stock</Badge>
+    } else if (quantity <= 10) {
       return (
-        <Badge variant="outline" className="bg-green-50 text-green-700 flex items-center gap-1">
-          <CloudCheck className="w-3 h-3" />
-          Synced
-        </Badge>
-      )
-    } else if (product.syncStatus === "pending") {
-      return (
-        <Badge variant="outline" className="bg-amber-50 text-amber-700 flex items-center gap-1">
-          <CloudSync className="w-3 h-3" />
-          Pending
+        <Badge variant="warning" className="bg-amber-500 hover:bg-amber-600">
+          Low Stock
         </Badge>
       )
     } else {
       return (
-        <Badge variant="outline" className="bg-red-50 text-red-700 flex items-center gap-1">
-          <CloudOff className="w-3 h-3" />
-          Error
+        <Badge variant="success" className="bg-green-500 hover:bg-green-600">
+          In Stock
         </Badge>
       )
     }
   }
 
   if (isLoading) {
-    return <div className="text-center py-4">Loading products...</div>
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    )
   }
 
   if (products.length === 0) {
-    return <div className="text-center py-4">No products found. Add your first product to get started.</div>
+    return (
+      <div className="flex flex-col items-center justify-center h-64 text-center">
+        <h3 className="text-lg font-medium">No products found</h3>
+        <p className="text-muted-foreground">Add a new product or adjust your filters.</p>
+      </div>
+    )
   }
 
   return (
@@ -98,11 +107,12 @@ export function ProductsTable({ products, isLoading, onEdit, onDelete, onProduct
             <TableRow>
               <TableHead>Name</TableHead>
               <TableHead>SKU</TableHead>
-              <TableHead className="hidden md:table-cell">Category</TableHead>
-              <TableHead className="text-right">Price</TableHead>
-              <TableHead className="text-right">Quantity</TableHead>
-              <TableHead className="hidden md:table-cell">Vendor</TableHead>
-              <TableHead className="w-[80px]"></TableHead>
+              <TableHead>Price</TableHead>
+              <TableHead>Quantity</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Category</TableHead>
+              <TableHead>Vendor</TableHead>
+              <TableHead className="w-[80px]">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -110,13 +120,11 @@ export function ProductsTable({ products, isLoading, onEdit, onDelete, onProduct
               <TableRow key={product.id}>
                 <TableCell className="font-medium">{product.name}</TableCell>
                 <TableCell>{product.sku}</TableCell>
-                <TableCell className="hidden md:table-cell">{product.category || "-"}</TableCell>
-                <TableCell className="text-right">${product.price.toFixed(2)}</TableCell>
-                <TableCell className="text-right">
-                  <span className={product.quantity === 0 ? "text-red-500 font-medium" : ""}>{product.quantity}</span>
-                </TableCell>
-                <TableCell className="hidden md:table-cell">{product.vendor || "-"}</TableCell>
-                
+                <TableCell>{formatCurrency(product.price)}</TableCell>
+                <TableCell>{product.quantity}</TableCell>
+                <TableCell>{getStockStatus(product.quantity)}</TableCell>
+                <TableCell>{product.category || "-"}</TableCell>
+                <TableCell>{product.vendor || "-"}</TableCell>
                 <TableCell>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -127,13 +135,16 @@ export function ProductsTable({ products, isLoading, onEdit, onDelete, onProduct
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={() => onEdit(product)}>
-                        <Edit className="h-4 w-4 mr-2" />
+                        <Edit className="mr-2 h-4 w-4" />
                         Edit
                       </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => handleDeleteClick(product)} className="text-red-600">
-                        <Trash2 className="h-4 w-4 mr-2" />
+                      <DropdownMenuItem
+                        onClick={() => handleDeleteClick(product.id)}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
                         Delete
                       </DropdownMenuItem>
                     </DropdownMenuContent>
@@ -145,17 +156,17 @@ export function ProductsTable({ products, isLoading, onEdit, onDelete, onProduct
         </Table>
       </div>
 
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+      <AlertDialog open={!!productToDelete} onOpenChange={(open) => !open && setProductToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete the product "{productToDelete?.name}". This action cannot be undone.
+              This action cannot be undone. This will permanently delete the product and remove it from the inventory.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} className="bg-red-600 hover:bg-red-700">
+            <AlertDialogCancel onClick={handleDeleteCancel}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteConfirm} className="bg-destructive text-destructive-foreground">
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>

@@ -1,119 +1,85 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
+import prisma from "@/lib/prisma"
 
-/**
- * GET handler for fetching products
- */
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const searchParams = request.nextUrl.searchParams
+    // Get the current user from the session
+    const cookieStore = cookies()
+    const authCookie = cookieStore.get("auth")
 
-    const search = searchParams.get("search") || ""
-    const category = searchParams.get("category") || undefined
-    const vendor = searchParams.get("vendor") || undefined
-    const inStock = searchParams.get("inStock") === "true" ? true : undefined
-    const outOfStock = searchParams.get("outOfStock") === "true" ? true : undefined
-    const page = Number.parseInt(searchParams.get("page") || "1")
-    const limit = Number.parseInt(searchParams.get("limit") || "50")
-
-    const whereClause: any = {}
-
-    if (search) {
-      whereClause.OR = [
-        { name: { contains: search, mode: "insensitive" } },
-        { sku: { contains: search, mode: "insensitive" } },
-        { description: { contains: search, mode: "insensitive" } },
-      ]
+    if (!authCookie) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    if (category) whereClause.category = category
-    if (vendor) whereClause.vendor = vendor
-    if (inStock) whereClause.quantity = { gt: 0 }
-    if (outOfStock) whereClause.quantity = { equals: 0 }
+    const session = JSON.parse(authCookie.value)
 
-    const [products, total] = await Promise.all([
-      prisma.product.findMany({
-        where: whereClause,
-        orderBy: { updatedAt: "desc" },
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-      prisma.product.count({ where: whereClause }),
-    ])
+    // Fetch products based on user role
+    let products = []
 
-    const response = {
-      data: products.map((product) => ({
-        id: product.id,
-        name: product.name,
-        description: product.description || "",
-        sku: product.sku,
-        price: product.price,
-        quantity: product.quantity,
-        category: product.category || "",
-        vendor: product.vendor || "",
-        imageUrl: product.imageUrl || "",
-        createdAt: product.createdAt.toISOString(),
-        updatedAt: product.updatedAt.toISOString(),
-      })),
-      pagination: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
+    if (session.role === "sales_person") {
+      // Sales persons can see all products (for selling purposes)
+      products = await prisma.product.findMany({
+        orderBy: { createdAt: "desc" },
+      })
+    } else {
+      // Both admins and warehouse managers can only see their own products
+      products = await prisma.product.findMany({
+        where: {
+          createdById: session.id,
+        },
+        orderBy: { createdAt: "desc" },
+      })
     }
 
-    return NextResponse.json(response)
-  } catch (error: any) {
-    console.error("Error in GET /api/products:", error)
-    return NextResponse.json({ error: "Failed to fetch products", message: error.message }, { status: 500 })
+    return NextResponse.json({ data: products })
+  } catch (error) {
+    console.error("Error fetching products:", error)
+    return NextResponse.json({ error: "Failed to fetch products" }, { status: 500 })
   }
 }
 
-/**
- * POST handler for creating a new product
- */
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
-    const data = await request.json()
+    const cookieStore = cookies()
+    const authCookie = cookieStore.get("auth")
 
-    if (!data.name || !data.sku) {
-      return NextResponse.json(
-        { error: "Missing required fields", details: "Name and SKU are required" },
-        { status: 400 },
-      )
+    if (!authCookie) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    const session = JSON.parse(authCookie.value)
+    const data = await request.json()
+
+    // Validate required fields
+    if (!data.name || !data.sku || data.price === undefined || data.quantity === undefined) {
+      return NextResponse.json({ error: "Name, SKU, price, and quantity are required" }, { status: 400 })
+    }
+
+    // Create the product with the current user as creator
     const product = await prisma.product.create({
       data: {
-        id: data.id,
         name: data.name,
-        description: data.description || "",
+        description: data.description || null,
         sku: data.sku,
-        price: data.price || 0,
-        quantity: data.quantity || 0,
-        category: data.category || "",
-        vendor: data.vendor || "",
-        imageUrl: data.imageUrl || "",
-        createdAt: data.createdAt ? new Date(data.createdAt) : new Date(),
-        updatedAt: data.updatedAt ? new Date(data.updatedAt) : new Date(),
+        price: Number.parseFloat(data.price),
+        quantity: Number.parseInt(data.quantity),
+        category: data.category || null,
+        vendor: data.vendor || null,
+        imageUrl: data.imageUrl || null,
+        createdById: session.id, // Associate the product with the current user
       },
     })
 
-    return NextResponse.json(product, { status: 201 })
-  } catch (error: any) {
-    console.error("Error in POST /api/products:", error)
+    return NextResponse.json(product)
+  } catch (error) {
+    console.error("Error creating product:", error)
 
-    if (error.code === "P2002") {
-      return NextResponse.json(
-        {
-          error: "Duplicate record",
-          message: "A product with this SKU already exists",
-        },
-        { status: 409 },
-      )
+    // Handle unique constraint violations
+    if ((error as any).code === "P2002") {
+      return NextResponse.json({ error: "A product with this SKU already exists" }, { status: 400 })
     }
 
-    return NextResponse.json({ error: "Failed to create product", message: error.message }, { status: 500 })
+    return NextResponse.json({ error: "Failed to create product" }, { status: 500 })
   }
 }
