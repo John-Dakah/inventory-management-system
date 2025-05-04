@@ -1,89 +1,53 @@
 import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
 import prisma from "@/lib/prisma"
 
 export async function POST(request: Request) {
   try {
+    const cookieStore = cookies()
+    const authCookie = cookieStore.get("auth")
+
+    if (!authCookie) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const session = JSON.parse(authCookie.value)
     const data = await request.json()
-    const { items, subtotal, tax, total, discountPercent, paymentMethod, customerId, date } = data
 
-    // Calculate discount amount
-    const discountAmount = (subtotal * discountPercent) / 100
+    // First, check if the user has permission to modify this stock item
+    const stockItem = await prisma.stockItem.findUnique({
+      where: { id: data.stockItemId },
+    })
 
-    // Generate a unique reference number
-    const reference = `SALE-${Date.now()}`
+    if (!stockItem) {
+      return NextResponse.json({ error: "Stock item not found" }, { status: 404 })
+    }
 
-    // Create a new transaction record
-    const transaction = await prisma.transaction.create({
+    // Check if user has permission to modify this stock item
+    if (session.role !== "sales_person" && stockItem.createdById !== session.id) {
+      return NextResponse.json({ error: "Unauthorized to modify this stock item" }, { status: 403 })
+    }
+
+    // Create the transaction with the current user as creator
+    const transaction = await prisma.stockTransaction.create({
       data: {
-        reference,
-        date: date ? new Date(date) : new Date(),
-        subtotal,
-        tax,
-        discount: discountAmount,
-        total,
-        paymentMethod,
-        status: "Completed",
-        customerId,
-        cashierName: "System User", // In a real app, this would be the logged-in user
-        items: {
-          create: items.map((item: any) => ({
-            quantity: item.quantity,
-            price: item.price,
-            total: item.price * item.quantity,
-            productId: item.productId,
-          })),
-        },
-      },
-      include: {
-        items: true,
+        ...data,
+        createdById: session.id,
       },
     })
 
-    // Update inventory for each product
-    for (const item of items) {
-      await prisma.product.update({
-        where: {
-          id: item.productId,
-        },
-        data: {
-          quantity: {
-            decrement: item.quantity,
-          },
-        },
-      })
-    }
-
-    // Update customer stats if a customer was specified
-    if (customerId) {
-      const customerTransactions = await prisma.transaction.findMany({
-        where: {
-          customerId,
-        },
-      })
-
-      const totalSpent = customerTransactions.reduce((sum, t) => sum + t.total, 0)
-      const visits = customerTransactions.length
-
-      await prisma.oUR_USER.update({
-        where: {
-          id: customerId,
-        },
-        data: {
-          totalSpent,
-          visits,
-          lastVisit: new Date(),
-        },
-      })
-    }
-
-    return NextResponse.json({
-      success: true,
-      transactionId: reference,
-      transaction,
+    // Update the stock item quantity
+    await prisma.stockItem.update({
+      where: { id: data.stockItemId },
+      data: {
+        quantity: data.newQuantity,
+        lastUpdated: new Date(),
+      },
     })
+
+    return NextResponse.json(transaction)
   } catch (error) {
-    console.error("Error processing transaction:", error)
-    return NextResponse.json({ error: "Failed to process transaction" }, { status: 500 })
+    console.error("Error recording stock transaction:", error)
+    return NextResponse.json({ error: "Failed to record stock transaction" }, { status: 500 })
   }
 }
-
