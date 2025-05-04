@@ -19,6 +19,7 @@ enum UserRole {
 }
 
 // User model
+<<<<<<< HEAD
 model OUR_USER {
   id           String        @id @default(cuid())
   email        String        @unique
@@ -40,6 +41,29 @@ model OUR_USER {
   createdUsers OUR_USER[]    @relation("CreatedUsers")
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
+=======
+model oUR_USER {
+  id         String   @id @default(cuid())
+  email      String   @unique
+  password   String
+  fullName   String
+  phone      String?
+  address    String?
+  department String?  // Optional field
+  joinDate   DateTime @default(now())
+  lastVisit  DateTime @default(now())
+  totalSpent Float    @default(0)
+  visits     Int      @default(0)
+  type       String   @default("New") // New, Regular, VIP
+  notes      String?
+  status     String   @default("ACTIVE")
+  role       UserRole
+  createdById  String?
+  createdBy    oUR_USER?  @relation("CreatedUsers", fields: [createdById], references: [id])
+  createdUsers oUR_USER[] @relation("CreatedUsers")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+>>>>>>> 7d3a7066082f1e4c101c33461252468ca0a2361b
   transactions Transaction[]
   products     Product[] // Add this relation to track products created by users
 }
@@ -111,6 +135,7 @@ model StockTransaction {
 
 // Transaction model
 model Transaction {
+<<<<<<< HEAD
   id            String            @id @default(cuid())
   reference     String            @unique // e.g., "SALE-12345"
   date          DateTime          @default(now())
@@ -128,6 +153,25 @@ model Transaction {
   cashierId     String?
   cashierName   String?
   items         TransactionItem[]
+=======
+  id              String   @id @default(cuid())
+  reference       String   @unique 
+  date            DateTime @default(now())
+  subtotal        Float
+  tax             Float
+  discount        Float    @default(0)
+  total           Float
+  paymentMethod   String
+  status          String   @default("Completed") 
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  customer        oUR_USER? @relation(fields: [customerId], references: [id])
+  customerId      String?
+  cashierId       String?
+  cashierName     String?
+  items           TransactionItem[]
+>>>>>>> 7d3a7066082f1e4c101c33461252468ca0a2361b
 }
 
 // TransactionItem model
@@ -151,6 +195,7 @@ model RegisterSession {
   closedAt       DateTime?
   openingBalance Float
   closingBalance Float?
+<<<<<<< HEAD
   difference     Float?
   status         String // Open, Closed
   notes          String?
@@ -158,4 +203,13 @@ model RegisterSession {
   cashierName    String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+=======
+  difference    Float?
+  status        String   
+  notes         String?
+  cashierId     String?
+  cashierName   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+>>>>>>> 7d3a7066082f1e4c101c33461252468ca0a2361b
 }

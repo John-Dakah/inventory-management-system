@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { UserRole } from "@prisma/client"
 
 export async function GET(request: Request) {
   try {
@@ -11,14 +12,14 @@ export async function GET(request: Request) {
     const customers = await prisma.oUR_USER.findMany({
       where: {
         OR: [
-          { name: { contains: search, mode: "insensitive" } },
+          { fullName: { contains: search, mode: "insensitive" } },
           { email: { contains: search, mode: "insensitive" } },
           { phone: { contains: search, mode: "insensitive" } },
         ],
         ...(type && type !== "All" ? { type } : {}),
       },
       orderBy: {
-        name: "asc",
+        fullName: "asc",
       },
       take: 100,
     })
@@ -54,7 +55,7 @@ export async function POST(request: Request) {
     // Create new customer
     const customer = await prisma.oUR_USER.create({
       data: {
-        name,
+        fullName: name,
         email,
         phone,
         address,
@@ -62,6 +63,8 @@ export async function POST(request: Request) {
         notes,
         joinDate: new Date(),
         lastVisit: new Date(),
+        password: "defaultPassword123", 
+        role: "USER" as UserRole, 
       },
     })
 
