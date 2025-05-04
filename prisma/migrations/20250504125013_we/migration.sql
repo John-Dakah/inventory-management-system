@@ -2,7 +2,7 @@
 CREATE TYPE "UserRole" AS ENUM ('admin', 'warehouse_manager', 'sales_person');
 
 -- CreateTable
-CREATE TABLE "OUR_USER" (
+CREATE TABLE "oUR_USER" (
     "id" TEXT NOT NULL,
     "email" TEXT NOT NULL,
     "password" TEXT NOT NULL,
@@ -22,7 +22,7 @@ CREATE TABLE "OUR_USER" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
-    CONSTRAINT "OUR_USER_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "oUR_USER_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -147,7 +147,7 @@ CREATE TABLE "RegisterSession" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "OUR_USER_email_key" ON "OUR_USER"("email");
+CREATE UNIQUE INDEX "oUR_USER_email_key" ON "oUR_USER"("email");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Product_sku_key" ON "Product"("sku");
@@ -159,10 +159,13 @@ CREATE UNIQUE INDEX "StockItem_sku_key" ON "StockItem"("sku");
 CREATE UNIQUE INDEX "Transaction_reference_key" ON "Transaction"("reference");
 
 -- AddForeignKey
+ALTER TABLE "oUR_USER" ADD CONSTRAINT "oUR_USER_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "oUR_USER"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "StockTransaction" ADD CONSTRAINT "StockTransaction_stockItemId_fkey" FOREIGN KEY ("stockItemId") REFERENCES "StockItem"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Transaction" ADD CONSTRAINT "Transaction_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "OUR_USER"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "Transaction" ADD CONSTRAINT "Transaction_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "oUR_USER"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "TransactionItem" ADD CONSTRAINT "TransactionItem_transactionId_fkey" FOREIGN KEY ("transactionId") REFERENCES "Transaction"("id") ON DELETE CASCADE ON UPDATE CASCADE;

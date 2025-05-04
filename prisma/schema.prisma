@@ -16,7 +16,7 @@ enum UserRole {
 }
 
 // User model
-model OUR_USER {
+model oUR_USER {
   id         String   @id @default(cuid())
   email      String   @unique
   password   String
@@ -33,8 +33,8 @@ model OUR_USER {
   status     String   @default("ACTIVE")
   role       UserRole
   createdById  String?
-  createdBy    OUR_USER?  @relation("CreatedUsers", fields: [createdById], references: [id])
-  createdUsers OUR_USER[] @relation("CreatedUsers")
+  createdBy    oUR_USER?  @relation("CreatedUsers", fields: [createdById], references: [id])
+  createdUsers oUR_USER[] @relation("CreatedUsers")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   transactions Transaction[]
@@ -106,18 +106,18 @@ model StockTransaction {
 // Transaction model
 model Transaction {
   id              String   @id @default(cuid())
-  reference       String   @unique // e.g., "SALE-12345"
+  reference       String   @unique 
   date            DateTime @default(now())
   subtotal        Float
   tax             Float
   discount        Float    @default(0)
   total           Float
   paymentMethod   String
-  status          String   @default("Completed") // Completed, Voided
+  status          String   @default("Completed") 
   notes           String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-  customer        OUR_USER? @relation(fields: [customerId], references: [id])
+  customer        oUR_USER? @relation(fields: [customerId], references: [id])
   customerId      String?
   cashierId       String?
   cashierName     String?
@@ -146,7 +146,7 @@ model RegisterSession {
   openingBalance Float
   closingBalance Float?
   difference    Float?
-  status        String   // Open, Closed
+  status        String   
   notes         String?
   cashierId     String?
   cashierName   String?

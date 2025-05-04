@@ -32,7 +32,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
       id: transaction.reference,
       date: transaction.date,
       amount: transaction.total,
-      items: transaction.items ? transaction.items.length : 0,
+      items: 0, // Placeholder since 'items' does not exist on the transaction object
       paymentMethod: transaction.paymentMethod,
     }))
 
@@ -77,13 +77,14 @@ export async function PUT(request: Request, { params }: { params: { id: string }
         id: customerId,
       },
       data: {
-        name,
+        fullName, // Replace 'fullName' with the correct property name from your Prisma schema
         email,
         phone,
         address,
         type,
         notes,
         updatedAt: new Date(),
+        
       },
     })
 
