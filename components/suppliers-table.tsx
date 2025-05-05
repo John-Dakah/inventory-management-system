@@ -1,9 +1,16 @@
 "use client"
 
 import { useState } from "react"
-import { MoreHorizontal, Trash2, Edit, AlertCircle, RefreshCw, Database } from "lucide-react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,113 +21,70 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { deleteSupplier, syncSupplier } from "@/lib/supplier-service"
+import { Edit, MoreHorizontal, Trash2, Mail, Phone } from "lucide-react"
+import { deleteSupplier, type Supplier } from "@/lib/db"
 import { toast } from "@/components/ui/use-toast"
-import { SyncStatusIndicator } from "@/components/sync-status-indicator"
-import { useNetworkStatus } from "@/hooks/use-network-status"
-import type { Supplier } from "@/types"
 
 interface SuppliersTableProps {
   suppliers: Supplier[]
   isLoading: boolean
   onEdit: (supplier: Supplier) => void
   onDelete: (supplierId: string) => void
+  onSupplierSaved: (supplier: Supplier) => void
 }
 
-export function SuppliersTable({ suppliers, isLoading, onEdit, onDelete }: SuppliersTableProps) {
-  const isOnline = useNetworkStatus()
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-  const [supplierToDelete, setSupplierToDelete] = useState<Supplier | null>(null)
-  const [syncingIds, setSyncingIds] = useState<string[]>([])
+export function SuppliersTable({ suppliers, isLoading, onEdit, onDelete, onSupplierSaved }: SuppliersTableProps) {
+  const [supplierToDelete, setSupplierToDelete] = useState<string | null>(null)
 
-  const handleDeleteClick = (supplier: Supplier) => {
-    setSupplierToDelete(supplier)
-    setDeleteDialogOpen(true)
+  const handleDeleteClick = (supplierId: string) => {
+    setSupplierToDelete(supplierId)
   }
 
-  const confirmDelete = async () => {
-    if (!supplierToDelete) return
-
-    try {
-      await deleteSupplier(supplierToDelete.id)
-      onDelete(supplierToDelete.id)
-      toast({
-        title: "Supplier Deleted",
-        description: "The supplier has been deleted successfully.",
-      })
-    } catch (error: any) {
-      console.error("Error deleting supplier:", error)
-      toast({
-        variant: "destructive",
-        title: "Error Deleting Supplier",
-        description: error.message || "Failed to delete supplier. Please try again.",
-      })
-    } finally {
-      setDeleteDialogOpen(false)
-      setSupplierToDelete(null)
-    }
-  }
-
-  const handleSyncItem = async (supplier: Supplier) => {
-    if (!isOnline || syncingIds.includes(supplier.id) || supplier.syncStatus !== "pending") {
-      return
-    }
-
-    setSyncingIds((prev) => [...prev, supplier.id])
-
-    try {
-      const result = await syncSupplier(supplier.id)
-
-      if (result.success) {
-        toast({
-          title: "Sync Successful",
-          description: "The supplier has been synced with the database.",
-        })
-      } else {
+  const handleDeleteConfirm = async () => {
+    if (supplierToDelete) {
+      try {
+        const success = await deleteSupplier(supplierToDelete)
+        if (success) {
+          onDelete(supplierToDelete)
+          toast({
+            title: "Supplier deleted",
+            description: "The supplier has been successfully deleted.",
+          })
+        }
+      } catch (error) {
+        console.error("Error deleting supplier:", error)
         toast({
           variant: "destructive",
-          title: "Sync Failed",
-          description: result.error || "Failed to sync with the database. Please try again.",
+          title: "Error",
+          description: "Failed to delete supplier. Please try again.",
         })
+      } finally {
+        setSupplierToDelete(null)
       }
-    } catch (error: any) {
-      console.error(`Error syncing supplier ${supplier.id}:`, error)
-
-      // Show a user-friendly error message
-      let errorMessage = "Failed to sync with the database. Please try again."
-
-      if (error.message.includes("timed out")) {
-        errorMessage = "The connection to the database timed out. Please check your internet connection and try again."
-      } else if (error.message.includes("connect")) {
-        errorMessage = "Unable to connect to the database. Please check your internet connection."
-      } else if (error.message) {
-        errorMessage = error.message
-      }
-
-      toast({
-        variant: "destructive",
-        title: "Sync Error",
-        description: errorMessage,
-      })
-    } finally {
-      setSyncingIds((prev) => prev.filter((id) => id !== supplier.id))
     }
+  }
+
+  const handleDeleteCancel = () => {
+    setSupplierToDelete(null)
   }
 
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "Active":
-        return <Badge className="bg-green-500">Active</Badge>
-      case "Inactive":
-        return <Badge variant="secondary">Inactive</Badge>
+        return (
+          <Badge variant="success" className="bg-green-500 hover:bg-green-600">
+            Active
+          </Badge>
+        )
       case "On Hold":
         return (
-          <Badge variant="outline" className="text-amber-500 border-amber-500">
+          <Badge variant="warning" className="bg-amber-500 hover:bg-amber-600">
             On Hold
           </Badge>
         )
+      case "Inactive":
+        return <Badge variant="destructive">Inactive</Badge>
       default:
         return <Badge variant="outline">{status}</Badge>
     }
@@ -128,68 +92,33 @@ export function SuppliersTable({ suppliers, isLoading, onEdit, onDelete }: Suppl
 
   if (isLoading) {
     return (
-      <div className="flex h-40 items-center justify-center">
-        <div className="text-center">
-          <div className="mb-2 h-6 w-6 animate-spin rounded-full border-b-2 border-t-2 border-primary mx-auto"></div>
-          <p className="text-muted-foreground">Loading suppliers...</p>
-        </div>
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
       </div>
     )
   }
 
   if (suppliers.length === 0) {
     return (
-      <div className="flex h-40 flex-col items-center justify-center">
-        <AlertCircle className="mb-2 h-8 w-8 text-muted-foreground" />
-        <h3 className="font-medium">No suppliers found</h3>
-        <p className="text-sm text-muted-foreground">
-          No suppliers match your current filters or you haven't added any suppliers yet.
-        </p>
+      <div className="flex flex-col items-center justify-center h-64 text-center">
+        <h3 className="text-lg font-medium">No suppliers found</h3>
+        <p className="text-muted-foreground">Add a new supplier or adjust your filters.</p>
       </div>
     )
   }
 
-  // Count pending items
-  const pendingCount = suppliers.filter((s) => s.syncStatus === "pending").length
-
   return (
     <>
-      {pendingCount > 0 && (
-        <div className="flex justify-between items-center mb-4 p-3 bg-amber-50 border border-amber-200 rounded-md">
-          <div className="flex items-center">
-            <Database className="h-5 w-5 text-amber-500 mr-2" />
-            <span>
-              {pendingCount} item{pendingCount !== 1 ? "s" : ""} waiting to be synced to the database
-            </span>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              // Open the sync manager by dispatching a custom event
-              window.dispatchEvent(new CustomEvent("open-sync-manager"))
-            }}
-            disabled={!isOnline}
-            className="border-amber-500 text-amber-700 hover:bg-amber-100"
-          >
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Sync Now
-          </Button>
-        </div>
-      )}
-
       <div className="rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>
               <TableHead>Contact Person</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Phone</TableHead>
+              <TableHead>Contact</TableHead>
               <TableHead>Products</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Sync</TableHead>
-              <TableHead className="w-[80px]"></TableHead>
+              <TableHead className="w-[80px]">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -197,43 +126,28 @@ export function SuppliersTable({ suppliers, isLoading, onEdit, onDelete }: Suppl
               <TableRow key={supplier.id}>
                 <TableCell className="font-medium">{supplier.name}</TableCell>
                 <TableCell>{supplier.contactPerson}</TableCell>
-                <TableCell>{supplier.email}</TableCell>
-                <TableCell>{supplier.phone}</TableCell>
-                <TableCell>{supplier.products}</TableCell>
-                <TableCell>{getStatusBadge(supplier.status)}</TableCell>
                 <TableCell>
-                  <div className="flex items-center gap-2">
-                    <SyncStatusIndicator status={supplier.syncStatus || "synced"} error={supplier.syncError} />
-
-                    {supplier.syncStatus === "pending" && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        disabled={!isOnline || syncingIds.includes(supplier.id)}
-                        onClick={() => handleSyncItem(supplier)}
-                        title="Sync this item"
-                      >
-                        <RefreshCw className={`h-3 w-3 ${syncingIds.includes(supplier.id) ? "animate-spin" : ""}`} />
-                        <span className="sr-only">Sync</span>
-                      </Button>
-                    )}
-
-                    {supplier.syncStatus === "error" && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 text-red-500 hover:text-red-600 hover:bg-red-50"
-                        disabled={!isOnline || syncingIds.includes(supplier.id)}
-                        onClick={() => handleSyncItem(supplier)}
-                        title="Retry sync"
-                      >
-                        <RefreshCw className={`h-3 w-3 ${syncingIds.includes(supplier.id) ? "animate-spin" : ""}`} />
-                        <span className="sr-only">Retry</span>
-                      </Button>
-                    )}
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-1 text-sm">
+                      <Mail className="h-3 w-3" />
+                      <a href={`mailto:${supplier.email}`} className="hover:underline">
+                        {supplier.email}
+                      </a>
+                    </div>
+                    <div className="flex items-center gap-1 text-sm">
+                      <Phone className="h-3 w-3" />
+                      <a href={`tel:${supplier.phone}`} className="hover:underline">
+                        {supplier.phone}
+                      </a>
+                    </div>
                   </div>
                 </TableCell>
+                <TableCell>
+                  <div className="max-w-[200px] truncate" title={supplier.products}>
+                    {supplier.products}
+                  </div>
+                </TableCell>
+                <TableCell>{getStatusBadge(supplier.status)}</TableCell>
                 <TableCell>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -243,25 +157,19 @@ export function SuppliersTable({ suppliers, isLoading, onEdit, onDelete }: Suppl
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
+                      <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={() => onEdit(supplier)}>
                         <Edit className="mr-2 h-4 w-4" />
-                        <span>Edit</span>
+                        Edit
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleDeleteClick(supplier)}>
+                      <DropdownMenuItem
+                        onClick={() => handleDeleteClick(supplier.id)}
+                        className="text-destructive focus:text-destructive"
+                      >
                         <Trash2 className="mr-2 h-4 w-4" />
-                        <span>Delete</span>
+                        Delete
                       </DropdownMenuItem>
-                      {supplier.syncStatus === "pending" && (
-                        <DropdownMenuItem
-                          onClick={() => handleSyncItem(supplier)}
-                          disabled={!isOnline || syncingIds.includes(supplier.id)}
-                        >
-                          <RefreshCw
-                            className={`mr-2 h-4 w-4 ${syncingIds.includes(supplier.id) ? "animate-spin" : ""}`}
-                          />
-                          <span>Sync Now</span>
-                        </DropdownMenuItem>
-                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </TableCell>
@@ -271,18 +179,17 @@ export function SuppliersTable({ suppliers, isLoading, onEdit, onDelete }: Suppl
         </Table>
       </div>
 
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+      <AlertDialog open={!!supplierToDelete} onOpenChange={(open) => !open && setSupplierToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete the supplier <span className="font-medium">{supplierToDelete?.name}</span>.
-              This action cannot be undone.
+              This action cannot be undone. This will permanently delete the supplier and remove it from our system.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} className="bg-red-500 hover:bg-red-600">
+            <AlertDialogCancel onClick={handleDeleteCancel}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteConfirm} className="bg-destructive text-destructive-foreground">
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -291,4 +198,3 @@ export function SuppliersTable({ suppliers, isLoading, onEdit, onDelete }: Suppl
     </>
   )
 }
-

@@ -17,7 +17,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
         {/* Scrollable Main Content */}
         <div className="flex-1 overflow-y-auto">
           <Header />
-          <main className="container mx-auto p-4 md:p-6">{children}</main>
+          {children}
         </div>
       </div>
     </SidebarProvider>

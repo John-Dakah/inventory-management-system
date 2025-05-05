@@ -1,20 +1,35 @@
-import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
+import prisma from "@/lib/prisma"
 
-export async function GET() {
+export async function POST(request: Request) {
   try {
-    // Fetch all suppliers from the database
-    const suppliers = await prisma.supplier.findMany();
+    // Get the current user from the session
+    const cookieStore = cookies()
+    const authCookie = cookieStore.get("auth")
 
-    // Generate random performance rates for each supplier
-    const suppliersWithPerformance = suppliers.map((supplier) => ({
-      name: supplier.name,
-      rate: Math.floor(Math.random() * 15) + 85, // Random number between 85-99
-    }));
+    if (!authCookie) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
 
-    return NextResponse.json(suppliersWithPerformance);
+    const session = JSON.parse(authCookie.value)
+    const { whereClause } = await request.json()
+
+    // Apply role-based filtering
+    const finalWhereClause = session.role !== "sales_person" ? { createdById: session.id } : whereClause || {}
+
+    // Get suppliers
+    const suppliers = await prisma.supplier.findMany({
+      where: finalWhereClause,
+      select: {
+        id: true,
+        name: true,
+      },
+    })
+
+    return NextResponse.json(suppliers)
   } catch (error) {
-    console.error("Error fetching supplier performance:", error);
-    return NextResponse.json({ error: "Failed to fetch supplier performance" }, { status: 500 });
+    console.error("Error fetching supplier performance:", error)
+    return NextResponse.json({ error: "Failed to fetch supplier performance" }, { status: 500 })
   }
 }

@@ -1,20 +1,37 @@
-import { NextApiRequest, NextApiResponse } from "next";
-import { prisma } from "@/lib/prisma";
+import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
+import prisma from "@/lib/prisma"
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export async function POST(request: Request) {
   try {
-    // Fetch products from the database
-    const products = await prisma.product.findMany();
+    // Get the current user from the session
+    const cookieStore = cookies()
+    const authCookie = cookieStore.get("auth")
 
-    // Calculate inventory value (price * quantity)
-    const inventoryValue = products.reduce(
-      (total, product) => total + (product.price || 0) * (product.quantity || 0),
-      0
-    );
+    if (!authCookie) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
 
-    res.status(200).json({ inventoryValue });
+    const session = JSON.parse(authCookie.value)
+    const { whereClause } = await request.json()
+
+    // Apply role-based filtering
+    const finalWhereClause = session.role !== "sales_person" ? { createdById: session.id } : whereClause || {}
+
+    // Get all products
+    const products = await prisma.product.findMany({
+      where: finalWhereClause,
+      select: {
+        id: true,
+        name: true,
+        price: true,
+        quantity: true,
+      },
+    })
+
+    return NextResponse.json(products)
   } catch (error) {
-    console.error("Error calculating inventory value:", error);
-    res.status(500).json({ error: "Failed to calculate inventory value" });
+    console.error("Error fetching inventory value:", error)
+    return NextResponse.json({ error: "Failed to fetch inventory value" }, { status: 500 })
   }
 }

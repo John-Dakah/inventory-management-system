@@ -2,7 +2,7 @@
 CREATE TYPE "UserRole" AS ENUM ('admin', 'warehouse_manager', 'sales_person');
 
 -- CreateTable
-CREATE TABLE "oUR_USER" (
+CREATE TABLE "OUR_USER" (
     "id" TEXT NOT NULL,
     "email" TEXT NOT NULL,
     "password" TEXT NOT NULL,
@@ -22,7 +22,7 @@ CREATE TABLE "oUR_USER" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
-    CONSTRAINT "oUR_USER_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "OUR_USER_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -51,9 +51,10 @@ CREATE TABLE "Supplier" (
     "email" TEXT NOT NULL,
     "phone" TEXT NOT NULL,
     "products" TEXT NOT NULL,
-    "status" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'Active',
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
+    "createdById" TEXT,
 
     CONSTRAINT "Supplier_pkey" PRIMARY KEY ("id")
 );
@@ -71,6 +72,7 @@ CREATE TABLE "StockItem" (
     "lastUpdated" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
+    "createdById" TEXT,
 
     CONSTRAINT "StockItem_pkey" PRIMARY KEY ("id")
 );
@@ -90,6 +92,7 @@ CREATE TABLE "StockTransaction" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "stockItemId" TEXT,
     "metadata" JSONB,
+    "createdById" TEXT,
 
     CONSTRAINT "StockTransaction_pkey" PRIMARY KEY ("id")
 );
@@ -148,7 +151,7 @@ CREATE TABLE "RegisterSession" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "oUR_USER_email_key" ON "oUR_USER"("email");
+CREATE UNIQUE INDEX "OUR_USER_email_key" ON "OUR_USER"("email");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Product_sku_key" ON "Product"("sku");
@@ -160,20 +163,25 @@ CREATE UNIQUE INDEX "StockItem_sku_key" ON "StockItem"("sku");
 CREATE UNIQUE INDEX "Transaction_reference_key" ON "Transaction"("reference");
 
 -- AddForeignKey
-<<<<<<<< HEAD:prisma/migrations/20250504095219_u/migration.sql
 ALTER TABLE "OUR_USER" ADD CONSTRAINT "OUR_USER_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "OUR_USER"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Product" ADD CONSTRAINT "Product_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "OUR_USER"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-========
-ALTER TABLE "oUR_USER" ADD CONSTRAINT "oUR_USER_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "oUR_USER"("id") ON DELETE SET NULL ON UPDATE CASCADE;
->>>>>>>> 7d3a7066082f1e4c101c33461252468ca0a2361b:prisma/migrations/20250504125013_we/migration.sql
+
+-- AddForeignKey
+ALTER TABLE "Supplier" ADD CONSTRAINT "Supplier_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "OUR_USER"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "StockItem" ADD CONSTRAINT "StockItem_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "OUR_USER"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "StockTransaction" ADD CONSTRAINT "StockTransaction_stockItemId_fkey" FOREIGN KEY ("stockItemId") REFERENCES "StockItem"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Transaction" ADD CONSTRAINT "Transaction_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "oUR_USER"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "StockTransaction" ADD CONSTRAINT "StockTransaction_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "OUR_USER"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Transaction" ADD CONSTRAINT "Transaction_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "OUR_USER"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "TransactionItem" ADD CONSTRAINT "TransactionItem_transactionId_fkey" FOREIGN KEY ("transactionId") REFERENCES "Transaction"("id") ON DELETE CASCADE ON UPDATE CASCADE;

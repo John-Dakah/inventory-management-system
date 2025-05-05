@@ -1,120 +1,295 @@
 import prisma from "@/lib/prisma"
 import { cookies } from "next/headers"
 
-export async function getDashboardStats() {
-  // Get the current admin's ID from the auth cookie
-  const authCookie = cookies().get("auth")
-  let adminId = null
+// Get the current user from the session
+async function getCurrentUser() {
+  const cookieStore = cookies()
+  const authCookie = cookieStore.get("auth")
 
-  if (authCookie) {
-    try {
-      const { id, role } = JSON.parse(authCookie.value)
-      if (role === "admin") {
-        adminId = id
-      }
-    } catch (error) {
-      console.error("Error parsing auth cookie:", error)
+  if (!authCookie) {
+    return null
+  }
+
+  return JSON.parse(authCookie.value)
+}
+
+// Get dashboard statistics
+export async function getDashboardStats() {
+  try {
+    const session = await getCurrentUser()
+
+    if (!session) {
+      throw new Error("User not authenticated")
+    }
+
+    // Build the query based on user role
+    const whereClause = session.role !== "sales_person" ? { createdById: session.id } : {}
+
+    // Count total products
+    const totalProducts = await prisma.product.count({
+      where: whereClause,
+    })
+
+    // Count active suppliers
+    const activeSuppliers = await prisma.supplier.count({
+      where: {
+        ...whereClause,
+        status: "Active",
+      },
+    })
+
+    // Count total users (only admins can see all users)
+    const totalUsers =
+      session.role === "admin"
+        ? await prisma.oUR_USER.count()
+        : await prisma.oUR_USER.count({
+            where: { createdById: session.id },
+          })
+
+    // Count low stock items
+    const lowStockItems = await prisma.product.count({
+      where: {
+        ...whereClause,
+        quantity: {
+          lte: 10,
+        },
+      },
+    })
+
+    return {
+      totalProducts,
+      activeSuppliers,
+      totalUsers,
+      lowStockItems,
+    }
+  } catch (error) {
+    console.error("Error fetching dashboard stats:", error)
+    return {
+      totalProducts: 0,
+      activeSuppliers: 0,
+      totalUsers: 0,
+      lowStockItems: 0,
     }
   }
+}
 
-  // Count users created by this admin (excluding the admin)
-  const totalUsers = adminId
-    ? await prisma.oUR_USER.count({
-        where: {
-          createdById: adminId,
-          id: { not: adminId }, // Exclude the admin themselves
-        },
-      })
-    : 0
+// Get recent activity
+export async function getRecentActivity() {
+  try {
+    const session = await getCurrentUser()
 
-  // Get other stats (these are placeholders - implement as needed)
-  const totalProducts = await prisma.product.count()
-  const activeSuppliers = await prisma.supplier.count({
-    where: { status: "active" },
-  })
-  const lowStockItems = await prisma.product.count({
-    where: { quantity: { lt: 10 } },
-  })
+    if (!session) {
+      throw new Error("User not authenticated")
+    }
 
-  return {
-    totalUsers,
-    totalProducts,
-    activeSuppliers,
-    lowStockItems,
+    // Build the query based on user role
+    const whereClause = session.role !== "sales_person" ? { createdById: session.id } : {}
+
+    // Get recent stock transactions
+    const stockTransactions = await prisma.stockTransaction.findMany({
+      where: whereClause,
+      orderBy: { createdAt: "desc" },
+      take: 5,
+      include: {
+        stockItem: true,
+      },
+    })
+
+    // Get recent sales transactions
+    const salesTransactions = await prisma.transaction.findMany({
+      where: session.role !== "sales_person" ? { cashierId: session.id } : {},
+      orderBy: { createdAt: "desc" },
+      take: 5,
+    })
+
+    // Format stock transactions
+    const stockActivity = stockTransactions.map((transaction) => ({
+      id: transaction.id,
+      type: transaction.type === "in" ? "Stock In" : transaction.type === "out" ? "Stock Out" : "Adjustment",
+      description: `${transaction.stockItem?.name || "Unknown item"} - ${transaction.quantity} units`,
+      value: transaction.type === "in" ? `+${transaction.quantity}` : `-${transaction.quantity}`,
+      timestamp: transaction.createdAt,
+    }))
+
+    // Format sales transactions
+    const salesActivity = salesTransactions.map((transaction) => ({
+      id: transaction.id,
+      type: "Sale",
+      description: `Reference: ${transaction.reference}`,
+      value: `$${transaction.total.toFixed(2)}`,
+      timestamp: transaction.createdAt,
+    }))
+
+    // Combine and sort by timestamp
+    const allActivity = [...stockActivity, ...salesActivity]
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 8)
+
+    return allActivity
+  } catch (error) {
+    console.error("Error fetching recent activity:", error)
+    return []
   }
 }
 
-export async function getRecentActivity() {
-  // Implement this function based on your data model
-  return [
-    {
-      id: "1",
-      type: "Stock Received",
-      description: "Laptop shipment arrived",
-      value: "+25 units",
-    },
-    {
-      id: "2",
-      type: "Stock Adjustment",
-      description: "Inventory count correction",
-      value: "-3 units",
-    },
-    {
-      id: "3",
-      type: "New Product",
-      description: "Added wireless keyboards",
-      value: "SKU: KB-001",
-    },
-  ]
-}
-
+// Get low stock items
 export async function getLowStockItems() {
-  // Implement this function based on your data model
-  const products = await prisma.product.findMany({
-    where: { quantity: { lt: 10 } },
-    take: 5,
-    orderBy: { quantity: "asc" },
-  })
+  try {
+    const session = await getCurrentUser()
 
-  return products.map((product) => ({
-    id: product.id,
-    name: product.name,
-    currentStock: product.quantity,
-    threshold: 5, // This could be a field in your product model
-    status: product.quantity <= 2 ? "Critical" : "Warning",
-  }))
+    if (!session) {
+      throw new Error("User not authenticated")
+    }
+
+    // Build the query based on user role
+    const whereClause = session.role !== "sales_person" ? { createdById: session.id } : {}
+
+    // Get low stock products
+    const lowStockProducts = await prisma.product.findMany({
+      where: {
+        ...whereClause,
+        quantity: {
+          lte: 10,
+        },
+      },
+      orderBy: { quantity: "asc" },
+      take: 10,
+    })
+
+    // Format the data
+    return lowStockProducts.map((product) => ({
+      id: product.id,
+      name: product.name,
+      currentStock: product.quantity,
+      threshold: 10, // Assuming threshold is 10
+      status: product.quantity === 0 ? "Critical" : "Warning",
+    }))
+  } catch (error) {
+    console.error("Error fetching low stock items:", error)
+    return []
+  }
 }
 
+// Get stock overview data
 export async function getStockOverviewData() {
-  // Placeholder data - implement based on your data model
-  return [
-    { name: "Jan", value: 2400 },
-    { name: "Feb", value: 1398 },
-    { name: "Mar", value: 9800 },
-    { name: "Apr", value: 3908 },
-    { name: "May", value: 4800 },
-    { name: "Jun", value: 3800 },
-    { name: "Jul", value: 4300 },
-  ]
+  try {
+    const session = await getCurrentUser()
+
+    if (!session) {
+      throw new Error("User not authenticated")
+    }
+
+    // For demo purposes, generate mock data
+    // In a real application, this would query the database for historical stock levels
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    const currentMonth = new Date().getMonth()
+
+    // Generate data for the last 6 months
+    const data = []
+    for (let i = 5; i >= 0; i--) {
+      const monthIndex = (currentMonth - i + 12) % 12
+      data.push({
+        month: months[monthIndex],
+        "Raw Materials": Math.floor(Math.random() * 1000) + 500,
+        "Finished Goods": Math.floor(Math.random() * 2000) + 1000,
+        Packaging: Math.floor(Math.random() * 500) + 200,
+      })
+    }
+
+    return data
+  } catch (error) {
+    console.error("Error fetching stock overview data:", error)
+    return []
+  }
 }
 
+// Get stock distribution by location
 export async function getStockDistributionByLocation() {
-  // Placeholder data - implement based on your data model
-  return [
-    { name: "North", value: 4000 },
-    { name: "South", value: 3000 },
-    { name: "East", value: 2000 },
-    { name: "West", value: 2780 },
-    { name: "Central", value: 1890 },
-  ]
+  try {
+    const session = await getCurrentUser()
+
+    if (!session) {
+      throw new Error("User not authenticated")
+    }
+
+    // Build the query based on user role
+    const whereClause = session.role !== "sales_person" ? { createdById: session.id } : {}
+
+    // Get stock items grouped by location
+    const stockItems = await prisma.stockItem.findMany({
+      where: whereClause,
+      select: {
+        location: true,
+        quantity: true,
+      },
+    })
+
+    // Group by location
+    const locationMap = new Map()
+    stockItems.forEach((item) => {
+      const location = item.location || "Unknown"
+      const currentQuantity = locationMap.get(location) || 0
+      locationMap.set(location, currentQuantity + item.quantity)
+    })
+
+    // Format the data
+    return Array.from(locationMap.entries()).map(([name, value]) => ({
+      name,
+      value,
+    }))
+  } catch (error) {
+    console.error("Error fetching stock distribution data:", error)
+    return []
+  }
 }
 
+// Get product growth rate
 export async function getProductGrowthRate() {
-  // Placeholder - implement based on your data model
-  return 12.5
+  try {
+    const session = await getCurrentUser()
+
+    if (!session) {
+      throw new Error("User not authenticated")
+    }
+
+    // For demo purposes, return a fixed growth rate
+    // In a real application, this would calculate the growth rate based on historical data
+    return 8.5
+  } catch (error) {
+    console.error("Error calculating product growth rate:", error)
+    return 0
+  }
 }
 
+// Get new suppliers this month
 export async function getNewSuppliersThisMonth() {
-  // Placeholder - implement based on your data model
-  return 3
+  try {
+    const session = await getCurrentUser()
+
+    if (!session) {
+      throw new Error("User not authenticated")
+    }
+
+    // Build the query based on user role
+    const whereClause = session.role !== "sales_person" ? { createdById: session.id } : {}
+
+    // Calculate the first day of the current month
+    const now = new Date()
+    const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+
+    // Count suppliers created this month
+    const newSuppliers = await prisma.supplier.count({
+      where: {
+        ...whereClause,
+        createdAt: {
+          gte: firstDayOfMonth,
+        },
+      },
+    })
+
+    return newSuppliers
+  } catch (error) {
+    console.error("Error fetching new suppliers count:", error)
+    return 0
+  }
 }
