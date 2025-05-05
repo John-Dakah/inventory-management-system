@@ -18,12 +18,9 @@ enum UserRole {
   sales_person
 }
 
-// User model
-<<<<<<< HEAD
+// User mode
 model oUR_USER {
-=======
-model OUR_USER {
->>>>>>> 5bfc89bf736b174372854b4a6872bb8e0da51f2c
+
   id         String   @id @default(cuid())
   email      String   @unique
   password   String
@@ -40,40 +37,20 @@ model OUR_USER {
   status     String   @default("ACTIVE")
   role       UserRole
   createdById  String?
-  createdBy    OUR_USER?  @relation("CreatedUsers", fields: [createdById], references: [id])
-  createdUsers OUR_USER[] @relation("CreatedUsers")
+  createdBy    oUR_USER?  @relation("CreatedUsers", fields: [createdById], references: [id])
+  createdUsers oUR_USER[] @relation("CreatedUsers")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   transactions Transaction[]
-<<<<<<< HEAD
   products     Product[] 
-
   Supplier Supplier[]
-=======
-  products   Product[] // Products created by this user
-  stockItems StockItem[] // Stock items created by this user
-  stockTransactions StockTransaction[] // Stock transactions created by this user
-  suppliers  Supplier[] // Suppliers created by this user
->>>>>>> 5bfc89bf736b174372854b4a6872bb8e0da51f2c
+  stockItems StockItem[] 
+  stockTransactions StockTransaction[] 
+  RegisterSession RegisterSession[]
 }
 
 // Product model
 model Product {
-<<<<<<< HEAD
-  id               String            @id @default(cuid())
-  name             String
-  description      String?
-  sku              String            @unique
-  price            Float
-  quantity         Int
-  category         String?
-  vendor           String?
-  imageUrl         String?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  createdBy        oUR_USER?         @relation(fields: [createdById], references: [id])
-  createdById      String? 
-=======
   id          String   @id @default(cuid())
   name        String
   description String?
@@ -85,9 +62,8 @@ model Product {
   imageUrl    String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  createdBy   OUR_USER? @relation(fields: [createdById], references: [id])
+  createdBy   oUR_USER? @relation(fields: [createdById], references: [id])
   createdById String?  // Add this field to track who created the product
->>>>>>> 5bfc89bf736b174372854b4a6872bb8e0da51f2c
   transactionItems TransactionItem[]
 }
 
@@ -102,13 +78,8 @@ model Supplier {
   status        String   @default("Active")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
-<<<<<<< HEAD
   createdById   String?
   createdBy     oUR_USER? @relation(fields: [createdById], references: [id])
-=======
-  createdBy     OUR_USER? @relation(fields: [createdById], references: [id])
-  createdById   String?  // Add this field to track who created the supplier
->>>>>>> 5bfc89bf736b174372854b4a6872bb8e0da51f2c
 }
 
 // StockItem model
@@ -125,7 +96,7 @@ model StockItem {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   transactions StockTransaction[]
-  createdBy   OUR_USER? @relation(fields: [createdById], references: [id])
+  createdBy   oUR_USER? @relation(fields: [createdById], references: [id])
   createdById String?  // Add this field to track who created the stock item
 }
 
@@ -145,13 +116,13 @@ model StockTransaction {
   stockItem       StockItem? @relation(fields: [stockItemId], references: [id])
   stockItemId     String?
   metadata        Json?
-  createdBy       OUR_USER? @relation(fields: [createdById], references: [id])
+  createdBy       oUR_USER? @relation(fields: [createdById], references: [id])
   createdById     String?  // Add this field to track who created the transaction
 }
 
 // Transaction model
 model Transaction {
-<<<<<<< HEAD
+
 
   id            String            @id @default(cuid())
   reference     String            @unique // e.g., "SALE-12345"
@@ -170,25 +141,7 @@ model Transaction {
   cashierId     String?
   cashierName   String?
   items         TransactionItem[]
-=======
-  id              String   @id @default(cuid())
-  reference       String   @unique // e.g., "SALE-12345"
-  date            DateTime @default(now())
-  subtotal        Float
-  tax             Float
-  discount        Float    @default(0)
-  total           Float
-  paymentMethod   String
-  status          String   @default("Completed") // Completed, Voided
-  notes           String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  customer        OUR_USER? @relation(fields: [customerId], references: [id])
-  customerId      String?
-  cashierId       String?
-  cashierName     String?
-  items           TransactionItem[]
->>>>>>> 5bfc89bf736b174372854b4a6872bb8e0da51f2c
+  RegisterSession RegisterSession[]
 }
 
 // TransactionItem model
@@ -203,6 +156,7 @@ model TransactionItem {
   product       Product @relation(fields: [productId], references: [id])
   productId     String
   createdAt     DateTime @default(now())
+  
 }
 
 // New model for register sessions
@@ -212,7 +166,6 @@ model RegisterSession {
   closedAt      DateTime?
   openingBalance Float
   closingBalance Float?
-<<<<<<< HEAD
   cashIn        Float?
   cashOut       Float?
   difference     Float?
@@ -222,13 +175,7 @@ model RegisterSession {
   cashierName    String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
-=======
-  difference    Float?
-  status        String   // Open, Closed
-  notes         String?
-  cashierId     String?
-  cashierName   String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
->>>>>>> 5bfc89bf736b174372854b4a6872bb8e0da51f2c
+  transactions  Transaction[]
+  createdBy   oUR_USER? @relation(fields: [createdById], references: [id])
+  createdById String?  
 }
