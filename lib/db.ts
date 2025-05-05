@@ -391,8 +391,63 @@ export async function getStockStats(): Promise<any> {
     }
     return await response.json()
   } catch (error) {
+<<<<<<< HEAD
+    console.error("Error checking storage quota:", error)
+    return { used: 0, total: 0, percentUsed: 0 }
+  }
+}
+// Initialize database on load
+;(async () => {
+  try {
+    await ensureDBInitialized()
+  } catch (error) {
+    console.error("Initialization error:", error)
+  }
+})()
+
+export async function getProduct(id: string): Promise<Product | null> {
+  try {
+    const db = await getDB()
+    const product = await db.get("products", id)
+    return product ?? null
+  } catch (error) {
+    console.error("Error getting product from IndexedDB:", error)
+
+    // Fallback to searching in localStorage
+    const products = await getProducts()
+    return products.find((p) => p.id === id) || null
+  }
+}
+// sdfghjkl;'fghjkl;fghjkl;dfghjkldfghjkfghjkghj
+
+export const forceSyncAllData = async (): Promise<{ success: boolean; message: string }> => {
+  if (!isOnline()) {
+    return { success: false, message: "Cannot sync while offline" }
+  }
+
+  try {
+    // First process any pending sync queue items
+    await processSyncQueue()
+
+    // Then fetch fresh data from the database
+    const stockResult = await getStockItemsFromDB()
+    const productsResult = await getProductsFromDB()
+
+    if (!stockResult.length || !productsResult.length) {
+      return {
+        success: false,
+        message: "Failed to fetch latest data from database",
+      }
+    }
+
+    // Update IndexedDB with the latest data
+    await saveStockItemToDB(stockResult.data)
+    saveProductsToIndexedDB(productsResult)
+
+=======
     console.error("Error fetching stock stats:", error)
     // Return default stats
+>>>>>>> 5bfc89bf736b174372854b4a6872bb8e0da51f2c
     return {
       totalItems: 0,
       totalUnits: 0,

@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect } from "react"
 import { PlusIcon, Search, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -34,7 +33,6 @@ export default function SuppliersPage() {
     inactive: 0,
   })
 
-  // Initialize database when component mounts
   useEffect(() => {
     const init = async () => {
       try {
@@ -70,9 +68,14 @@ export default function SuppliersPage() {
     loadData()
   }, [])
 
-  // Apply filters
+  // Apply filters for newly added suppliers
   useEffect(() => {
     let results = suppliers
+
+    // Filter for newly added suppliers (e.g., added this month)
+    const now = new Date()
+    const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+    results = results.filter(supplier => new Date(supplier.createdAt) >= firstDayOfMonth)
 
     // Search filter
     if (searchTerm) {
@@ -357,4 +360,3 @@ export default function SuppliersPage() {
     </div>
   )
 }
-

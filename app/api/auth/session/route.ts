@@ -5,7 +5,7 @@ import prisma from "@/lib/prisma"
 export async function GET() {
   try {
     // Get the auth cookie
-    const authCookie = cookies().get("auth")
+    const authCookie = (await cookies()).get("auth")
 
     if (!authCookie || !authCookie.value) {
       return NextResponse.json({ user: null })
@@ -30,7 +30,9 @@ export async function GET() {
 
     if (!user || user.status !== "ACTIVE") {
       // User no longer exists or is inactive, clear the cookie
-      cookies().set({
+      (await
+        // User no longer exists or is inactive, clear the cookie
+        cookies()).set({
         name: "auth",
         value: "",
         expires: new Date(0),

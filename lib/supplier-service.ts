@@ -7,19 +7,24 @@ import {
   getByIndex,
   countByIndex,
 } from "@/lib/db-utils"
-import type {Supplier } from "@/types"
+import type { Supplier } from "@/types"
 
-
-export async function getSuppliers(): Promise<Supplier[]> {
-  return getAllFromStore<Supplier>(SUPPLIERS_DB.stores.suppliers)
+export async function getSuppliers(userId: string): Promise<Supplier[]> {
+  const all = await getAllFromStore<Supplier>(SUPPLIERS_DB.stores.suppliers)
+  return all.filter((s) => s.userId === userId)
 }
 
-export async function getSupplierStats() {
-  const total = await countByIndex(SUPPLIERS_DB.stores.suppliers, "status", "")
-  const active = await countByIndex(SUPPLIERS_DB.stores.suppliers, "status", "Active")
-  const onHold = await countByIndex(SUPPLIERS_DB.stores.suppliers, "status", "On Hold")
-  const inactive = await countByIndex(SUPPLIERS_DB.stores.suppliers, "status", "Inactive")
-  const newThisMonth = await getNewSuppliersThisMonth()
+export async function getSupplierStats(userId: string) {
+  const all = await getSuppliers(userId)
+  const total = all.length
+  const active = all.filter((s) => s.status === "Active").length
+  const onHold = all.filter((s) => s.status === "On Hold").length
+  const inactive = all.filter((s) => s.status === "Inactive").length
+  const newThisMonth = all.filter((s) => {
+    const created = new Date(s.createdAt)
+    const now = new Date()
+    return created.getFullYear() === now.getFullYear() && created.getMonth() === now.getMonth()
+  }).length
 
   return {
     total,
@@ -30,39 +35,26 @@ export async function getSupplierStats() {
     inactive,
   }
 }
-export async function getSupplierNames(): Promise<string[]> {
-  const suppliers = await getSuppliers()
+
+export async function getSupplierNames(userId: string): Promise<string[]> {
+  const suppliers = await getSuppliers(userId)
   return suppliers.map((s) => s.name)
 }
 
-async function getNewSuppliersThisMonth(): Promise<number> {
-  const now = new Date()
-  const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-  const db = await getDatabase()
-  const tx = db.transaction(SUPPLIERS_DB.stores.suppliers, "readonly")
-  const index = tx.store.index("createdAt")
-  let count = 0
-
-  let cursor = await index.openCursor(IDBKeyRange.lowerBound(firstDayOfMonth))
-  while (cursor) {
-    count++
-    cursor = await cursor.continue()
-  }
-
-  await tx.done
-  return count
-}
-
-export async function saveSupplier(supplier: Supplier): Promise<string> {
+export async function saveSupplier(supplier: Supplier, userId: string): Promise<string> {
+  supplier.userId = userId
   return putToStore(SUPPLIERS_DB.stores.suppliers, supplier) as unknown as string
 }
 
-export async function deleteSupplier(id: string): Promise<void> {
+export async function deleteSupplier(id: string, userId: string): Promise<void> {
   try {
-    // Optimistically delete from IndexedDB
+    const db = await getDatabase()
+    const tx = db.transaction(SUPPLIERS_DB.stores.suppliers, "readwrite")
+    const supplier = await tx.store.get(id)
+    if (!supplier || supplier.userId !== userId) throw new Error("Unauthorized access")
+
     await deleteFromStore(SUPPLIERS_DB.stores.suppliers, id)
 
-    // If online, delete from server
     if (navigator.onLine) {
       await deleteSupplierFromServer(id)
     }
@@ -72,28 +64,28 @@ export async function deleteSupplier(id: string): Promise<void> {
   }
 }
 
-export async function getPendingSuppliers(): Promise<Supplier[]> {
-  return getByIndex<Supplier>(SUPPLIERS_DB.stores.suppliers, "syncStatus", "pending")
+export async function getPendingSuppliers(userId: string): Promise<Supplier[]> {
+  const pending = await getByIndex<Supplier>(SUPPLIERS_DB.stores.suppliers, "syncStatus", "pending")
+  return pending.filter((s) => s.userId === userId)
 }
 
-export async function getPendingSupplierCount(): Promise<number> {
-  return countByIndex(SUPPLIERS_DB.stores.suppliers, "syncStatus", "pending")
+export async function getPendingSupplierCount(userId: string): Promise<number> {
+  const pending = await getPendingSuppliers(userId)
+  return pending.length
 }
 
-export async function syncSupplier(supplierId: string): Promise<{ success: boolean; error?: string }> {
+export async function syncSupplier(supplierId: string, userId: string): Promise<{ success: boolean; error?: string }> {
   try {
     const db = await getDatabase()
     const tx = db.transaction(SUPPLIERS_DB.stores.suppliers, "readonly")
     const supplier = await tx.store.get(supplierId)
 
-    if (!supplier) {
-      return { success: false, error: "Supplier not found in local database" }
+    if (!supplier || supplier.userId !== userId) {
+      return { success: false, error: "Unauthorized or not found" }
     }
 
-    // Sync the supplier with the server
     const syncedSupplier = await saveSupplierToServer(supplier)
 
-    // Update the supplier's sync status in IndexedDB
     supplier.syncStatus = "synced"
     supplier.syncError = undefined
     await putToStore(SUPPLIERS_DB.stores.suppliers, supplier)
@@ -101,13 +93,11 @@ export async function syncSupplier(supplierId: string): Promise<{ success: boole
     return { success: true }
   } catch (error: any) {
     console.error(`Error syncing supplier ${supplierId}:`, error)
-
-    // Update the supplier's sync status in IndexedDB
     const db = await getDatabase()
     const tx = db.transaction(SUPPLIERS_DB.stores.suppliers, "readwrite")
     const supplier = await tx.store.get(supplierId)
 
-    if (supplier) {
+    if (supplier && supplier.userId === userId) {
       supplier.syncStatus = "error"
       supplier.syncError = error.message || "Sync failed"
       await tx.store.put(supplier)
@@ -118,6 +108,7 @@ export async function syncSupplier(supplierId: string): Promise<{ success: boole
 }
 
 export async function syncPendingSuppliers(
+  userId: string,
   progressCallback?: (current: number, total: number, success: boolean, message?: string) => void,
 ): Promise<{ success: boolean; synced: number; failed: number; errors: string[] }> {
   let synced = 0
@@ -125,23 +116,20 @@ export async function syncPendingSuppliers(
   const errors: string[] = []
 
   try {
-    const pendingSuppliers = await getPendingSuppliers()
+    const pendingSuppliers = await getPendingSuppliers(userId)
     const total = pendingSuppliers.length
 
     if (total === 0) {
       return { success: true, synced: 0, failed: 0, errors: [] }
     }
 
-    // Dispatch sync-start event
     window.dispatchEvent(new Event("sync-start"))
 
-    // Group suppliers by operation (create/update/delete)
     const suppliersToSync = pendingSuppliers.map((supplier) => {
       const { syncStatus, syncError, ...data } = supplier
       return data
     })
 
-    // Sync with server
     const response = await fetch("/api/suppliers/sync", {
       method: "POST",
       headers: {
@@ -158,13 +146,12 @@ export async function syncPendingSuppliers(
     const data = await response.json()
     const syncResults = data.results
 
-    // Update IndexedDB based on sync results
     for (const supplierId of syncResults.success) {
       const db = await getDatabase()
       const tx = db.transaction(SUPPLIERS_DB.stores.suppliers, "readwrite")
       const supplier = await tx.store.get(supplierId)
 
-      if (supplier) {
+      if (supplier && supplier.userId === userId) {
         supplier.syncStatus = "synced"
         supplier.syncError = undefined
         await tx.store.put(supplier)
@@ -179,7 +166,7 @@ export async function syncPendingSuppliers(
       const tx = db.transaction(SUPPLIERS_DB.stores.suppliers, "readwrite")
       const supplier = await tx.store.get(failedSupplier.id)
 
-      if (supplier) {
+      if (supplier && supplier.userId === userId) {
         supplier.syncStatus = "error"
         supplier.syncError = failedSupplier.error
         await tx.store.put(supplier)
@@ -190,42 +177,28 @@ export async function syncPendingSuppliers(
       progressCallback?.(synced + failed, total, false, failedSupplier.error)
     }
 
-    // Dispatch sync-end event
     window.dispatchEvent(
       new CustomEvent("sync-end", {
-        detail: {
-          summary: {
-            synced,
-            failed,
-            errors,
-          },
-        },
+        detail: { summary: { synced, failed, errors } },
       }),
     )
 
     return { success: true, synced, failed, errors }
   } catch (error: any) {
     console.error("Error syncing pending suppliers:", error)
-
-    // Dispatch sync-error event
     window.dispatchEvent(
       new CustomEvent("sync-error", {
-        detail: {
-          error: error.message || "Sync failed",
-        },
+        detail: { error: error.message || "Sync failed" },
       }),
     )
-
     return { success: false, synced: 0, failed: 0, errors: [error.message || "Sync failed"] }
   }
 }
 
-// Server API calls
 async function saveSupplierToServer(supplier: Supplier): Promise<Supplier> {
   try {
-    // Add timeout to the fetch request
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 10000)
 
     const response = await fetch("/api/suppliers", {
       method: supplier.id ? "PUT" : "POST",
@@ -240,8 +213,6 @@ async function saveSupplierToServer(supplier: Supplier): Promise<Supplier> {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
-
-      // Provide user-friendly error messages based on status codes
       let userFriendlyMessage = ""
       switch (response.status) {
         case 401:
@@ -259,23 +230,17 @@ async function saveSupplierToServer(supplier: Supplier): Promise<Supplier> {
         default:
           userFriendlyMessage = `The server returned an error (${response.status}). Please try again later.`
       }
-
       throw new Error(userFriendlyMessage)
     }
 
     return await response.json()
   } catch (error: any) {
     if (error.name === "AbortError") {
-      throw new Error(
-        "The connection to the database timed out. Please check your internet connection and try again later.",
-      )
+      throw new Error("The connection to the database timed out. Please check your internet connection and try again later.")
     }
-
-    // Customize network errors for better user understanding
     if (error.message.includes("fetch")) {
       throw new Error("Unable to connect to the database. Please check your internet connection.")
     }
-
     console.error("Error saving supplier to server:", error)
     throw error
   }
@@ -283,9 +248,8 @@ async function saveSupplierToServer(supplier: Supplier): Promise<Supplier> {
 
 async function deleteSupplierFromServer(id: string): Promise<void> {
   try {
-    // Add timeout to the fetch request
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 10000)
 
     const response = await fetch(`/api/suppliers/${id}`, {
       method: "DELETE",
@@ -296,8 +260,6 @@ async function deleteSupplierFromServer(id: string): Promise<void> {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
-
-      // Provide user-friendly error messages based on status codes
       let userFriendlyMessage = ""
       switch (response.status) {
         case 401:
@@ -315,23 +277,18 @@ async function deleteSupplierFromServer(id: string): Promise<void> {
         default:
           userFriendlyMessage = `The server returned an error (${response.status}). Please try again later.`
       }
-
       throw new Error(userFriendlyMessage)
     }
   } catch (error: any) {
     if (error.name === "AbortError") {
-      throw new Error(
-        "The connection to the database timed out. Please check your internet connection and try again later.",
-      )
+      throw new Error("The connection to the database timed out. Please check your internet connection and try again later.")
     }
-
-    // Customize network errors for better user understanding
     if (error.message.includes("fetch")) {
       throw new Error("Unable to connect to the database. Please check your internet connection.")
     }
-
     console.error(`Error deleting supplier ${id} from server:`, error)
     throw error
   }
 }
-
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth"  

@@ -155,7 +155,7 @@ export async function performSync(): Promise<{
       syncDetails.push({
         type: result.type,
         id: result.entityId,
-        operation: pendingItems.find((item) => item.id === result.id)?.operation || "unknown",
+        operation: pendingItems.find((item: { id: any }) => item.id === result.id)?.operation || "unknown",
         success: result.status === "fulfilled",
         error: result.error,
       })

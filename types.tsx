@@ -43,6 +43,7 @@ export interface StockTransaction {
 }
 
 export interface Supplier {
+  userId: string
   id: string
   name: string
   contactPerson: string

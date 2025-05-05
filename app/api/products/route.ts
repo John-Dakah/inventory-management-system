@@ -5,7 +5,7 @@ import prisma from "@/lib/prisma"
 export async function GET() {
   try {
     // Get the current user from the session
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
     const authCookie = cookieStore.get("auth")
 
     if (!authCookie) {
@@ -42,7 +42,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const cookieStore = cookies()
-    const authCookie = cookieStore.get("auth")
+    const authCookie = (await cookieStore).get("auth")
 
     if (!authCookie) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -67,7 +67,7 @@ export async function POST(request: Request) {
         category: data.category || null,
         vendor: data.vendor || null,
         imageUrl: data.imageUrl || null,
-        createdById: session.id, // Associate the product with the current user
+        createdById: session.id, 
       },
     })
 

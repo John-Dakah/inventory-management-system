@@ -4,7 +4,7 @@ import prisma from "@/lib/prisma"
 
 export async function GET(request: Request, { params }: { params: { id: string } }) {
   try {
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
     const authCookie = cookieStore.get("auth")
 
     if (!authCookie) {
@@ -17,6 +17,20 @@ export async function GET(request: Request, { params }: { params: { id: string }
     // Find the product
     const product = await prisma.product.findUnique({
       where: { id },
+      select: {
+        id: true,
+        name: true,
+        createdAt: true,
+        updatedAt: true,
+        description: true,
+        sku: true,
+        price: true,
+        quantity: true,
+        category: true,
+        vendor: true,
+        imageUrl: true,
+        createdById: true,
+      },
     })
 
     if (!product) {
@@ -38,7 +52,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
   try {
     const cookieStore = cookies()
-    const authCookie = cookieStore.get("auth")
+    const authCookie = (await cookieStore).get("auth")
 
     if (!authCookie) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -82,7 +96,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     console.error("Error updating product:", error)
 
     // Handle unique constraint violations
-    if (error.code === "P2002") {
+    if ((error as any).code === "P2002") {
       return NextResponse.json({ error: "A product with this SKU already exists" }, { status: 400 })
     }
 
@@ -93,7 +107,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
 export async function DELETE(request: Request, { params }: { params: { id: string } }) {
   try {
     const cookieStore = cookies()
-    const authCookie = cookieStore.get("auth")
+    const authCookie = (await cookieStore).get("auth")
 
     if (!authCookie) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
