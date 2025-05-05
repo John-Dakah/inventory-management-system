@@ -17,7 +17,7 @@ import { Separator } from "@/components/ui/separator"
 import Link from "next/link"
 
 type Product = {
-  id: string
+  id: string | undefined
   name: string
   description: string | null
   sku: string
@@ -26,8 +26,8 @@ type Product = {
   category: string | null
   vendor: string | null
   imageUrl: string | null
-  createdAt: string
-  updatedAt: string
+  createdAt?: string
+  updatedAt?: string
 }
 
 export default function InventoryPage() {
@@ -565,10 +565,12 @@ export default function InventoryPage() {
         </div>
       )}
       <ProductsTable
-        products={filteredProducts.map(product => ({
-          ...product,
-          description: product.description || "",
-        }))}
+        products={filteredProducts
+          .filter(product => product.id !== undefined)
+          .map(product => ({
+            ...product,
+            description: product.description || "",
+          }))}
         isLoading={isLoading}
         onEdit={handleEdit}
         onDelete={handleDelete}
@@ -577,7 +579,7 @@ export default function InventoryPage() {
       <ProductForm
         open={open}
         onOpenChange={setOpen}
-        onProductSaved={handleProductSaved}
+        onProductSaved={(product) => { void handleProductSaved(product) }}
         editProduct={editProduct ? { 
           ...editProduct, 
           description: editProduct.description || "", 

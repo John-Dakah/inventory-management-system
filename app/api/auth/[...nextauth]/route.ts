@@ -1,6 +1,6 @@
 import { compare } from "bcrypt"
 import NextAuth, { type NextAuthOptions, type User } from "next-auth"
-import { PrismaClient } from "@prisma/client"
+import { PrismaClient, UserRole } from "@prisma/client"
 
 const prisma = new PrismaClient()
 import CredentialsProvider from "next-auth/providers/credentials"
@@ -13,9 +13,10 @@ declare module "next-auth" {
   interface Session {
     user: {
       id: string;
-      email: string;
-      name: string;
-      role?: string;
+      email?: string | null;
+      name?: string | null;
+      image?: string | null;
+      role?: UserRole;
     };
   }
 }
@@ -97,7 +98,7 @@ export const authOptions: NextAuthOptions = {
         session.user.id = token.id as string
         session.user.email = token.email as string
         session.user.name = token.name as string
-        session.user.role = token.role as string
+        session.user.role = token.role as UserRole | undefined
       }
       return session
     },

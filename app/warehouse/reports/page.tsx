@@ -694,7 +694,7 @@ export default function WarehouseReportsPage() {
 
       const rows = stockData.transactions.map((t) => [
         format(new Date(t.createdAt), "yyyy-MM-dd"),
-        t.stockItem?.name || "",
+        t.stockItemId?.name || "",
         t.productSku || "",
         t.type,
         t.quantity,

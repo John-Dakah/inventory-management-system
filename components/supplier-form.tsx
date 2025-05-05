@@ -1,11 +1,9 @@
-"use client"
-
-import { useState, useEffect } from "react"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { useForm } from "react-hook-form"
-import { z } from "zod"
-import { v4 as uuidv4 } from "uuid"
-import { Button } from "@/components/ui/button"
+import { useState, useEffect } from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+import  cuid  from "cuid"; 
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -13,15 +11,15 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { toast } from "@/components/ui/use-toast"
-import { saveSupplier } from "@/lib/supplier-service"
-import { useNetworkStatus } from "@/app/hooks/use-network-status"
-import type { Supplier } from "@/types"
+} from "@/components/ui/dialog";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/components/ui/use-toast"; 
+import { saveSupplier } from "@/lib/supplier-service";
+import { useNetworkStatus } from "@/app/hooks/use-network-status";
+import type { Supplier } from "@/types";
 
 const supplierSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters" }),
@@ -34,21 +32,22 @@ const supplierSchema = z.object({
     message: "Please select a valid status",
   }),
   notes: z.string().optional(),
-})
+});
 
-type SupplierFormValues = z.infer<typeof supplierSchema>
+type SupplierFormValues = z.infer<typeof supplierSchema>;
 
 interface SupplierFormProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onSupplierSaved: (supplier: Supplier) => void
-  editSupplier?: Supplier | null
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSupplierSaved: (supplier: Supplier) => void;
+  editSupplier?: Supplier | null;
 }
 
 export function SupplierForm({ open, onOpenChange, onSupplierSaved, editSupplier }: SupplierFormProps) {
-  const isOnline = useNetworkStatus()
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const isEditing = !!editSupplier
+  const { toast } = useToast(); // Correct usage of toast
+  const isOnline = useNetworkStatus();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const isEditing = !!editSupplier;
 
   const form = useForm<SupplierFormValues>({
     resolver: zodResolver(supplierSchema),
@@ -59,16 +58,15 @@ export function SupplierForm({ open, onOpenChange, onSupplierSaved, editSupplier
       phone: "",
       address: "",
       products: "",
-      status: "Active",
+      status: "Active" as "Active",
       notes: "",
     },
-  })
+  });
 
   // Reset form when dialog opens/closes or when editSupplier changes
   useEffect(() => {
     if (open) {
       if (editSupplier) {
-        // If editing, populate form with supplier data
         form.reset({
           name: editSupplier.name,
           contactPerson: editSupplier.contactPerson,
@@ -76,11 +74,10 @@ export function SupplierForm({ open, onOpenChange, onSupplierSaved, editSupplier
           phone: editSupplier.phone,
           address: editSupplier.address || "",
           products: editSupplier.products,
-          status: editSupplier.status,
+          status: editSupplier.status as "Active" | "Inactive" | "On Hold",
           notes: editSupplier.notes || "",
-        })
+        });
       } else {
-        // If adding new supplier, reset to defaults
         form.reset({
           name: "",
           contactPerson: "",
@@ -90,17 +87,16 @@ export function SupplierForm({ open, onOpenChange, onSupplierSaved, editSupplier
           products: "",
           status: "Active",
           notes: "",
-        })
+        });
       }
     }
-  }, [open, editSupplier, form])
+  }, [open, editSupplier, form]);
 
   async function onSubmit(data: SupplierFormValues) {
-    setIsSubmitting(true)
+    setIsSubmitting(true);
     try {
-      const now = new Date().toISOString()
+      const now = new Date().toISOString();
 
-      // Create or update supplier
       const supplier: Supplier = isEditing
         ? {
             ...editSupplier!,
@@ -109,45 +105,41 @@ export function SupplierForm({ open, onOpenChange, onSupplierSaved, editSupplier
             syncStatus: "pending",
           }
         : {
-            id: uuidv4(),
+            id: cuid(), // Using cuid() for unique ID generation
             ...data,
             createdAt: now,
             updatedAt: now,
             syncStatus: "pending",
-          }
+          };
 
-      // Save to IndexedDB
-      await saveSupplier(supplier)
+      await saveSupplier(supplier);
 
-      // Notify parent component
-      onSupplierSaved(supplier)
+      onSupplierSaved(supplier);
 
-      // Show appropriate toast based on network status and operation
       if (isOnline) {
         toast({
           title: isEditing ? "Supplier Updated" : "Supplier Added",
           description: isEditing
             ? "Supplier has been updated and will be synced with the server."
             : "Supplier has been added and will be synced with the server.",
-        })
+        });
       } else {
         toast({
           title: isEditing ? "Supplier Updated Locally" : "Supplier Added Locally",
           description: "Changes have been saved locally and will be synced when you're back online.",
-        })
+        });
       }
 
-      // Close dialog
-      onOpenChange(false)
+      onOpenChange(false);
     } catch (error) {
-      console.error("Error saving supplier:", error)
+      console.error("Error saving supplier:", error);
       toast({
         variant: "destructive",
         title: "Error",
         description: `Failed to ${isEditing ? "update" : "add"} supplier. Please try again.`,
-      })
+      });
     } finally {
-      setIsSubmitting(false)
+      setIsSubmitting(false);
     }
   }
 
@@ -182,7 +174,6 @@ export function SupplierForm({ open, onOpenChange, onSupplierSaved, editSupplier
                 </FormItem>
               )}
             />
-
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
@@ -197,7 +188,6 @@ export function SupplierForm({ open, onOpenChange, onSupplierSaved, editSupplier
                   </FormItem>
                 )}
               />
-
               <FormField
                 control={form.control}
                 name="status"
@@ -221,7 +211,6 @@ export function SupplierForm({ open, onOpenChange, onSupplierSaved, editSupplier
                 )}
               />
             </div>
-
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
@@ -236,7 +225,6 @@ export function SupplierForm({ open, onOpenChange, onSupplierSaved, editSupplier
                   </FormItem>
                 )}
               />
-
               <FormField
                 control={form.control}
                 name="phone"
@@ -251,7 +239,6 @@ export function SupplierForm({ open, onOpenChange, onSupplierSaved, editSupplier
                 )}
               />
             </div>
-
             <FormField
               control={form.control}
               name="address"
@@ -265,7 +252,6 @@ export function SupplierForm({ open, onOpenChange, onSupplierSaved, editSupplier
                 </FormItem>
               )}
             />
-
             <FormField
               control={form.control}
               name="products"
@@ -279,7 +265,6 @@ export function SupplierForm({ open, onOpenChange, onSupplierSaved, editSupplier
                 </FormItem>
               )}
             />
-
             <FormField
               control={form.control}
               name="notes"
@@ -293,7 +278,6 @@ export function SupplierForm({ open, onOpenChange, onSupplierSaved, editSupplier
                 </FormItem>
               )}
             />
-
             <DialogFooter>
               <Button variant="outline" type="button" onClick={() => onOpenChange(false)}>
                 Cancel
@@ -312,6 +296,5 @@ export function SupplierForm({ open, onOpenChange, onSupplierSaved, editSupplier
         </Form>
       </DialogContent>
     </Dialog>
-  )
+  );
 }
-

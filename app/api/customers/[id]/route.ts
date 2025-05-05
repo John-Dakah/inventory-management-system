@@ -77,7 +77,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
         id: customerId,
       },
       data: {
-        fullName, // Replace 'fullName' with the correct property name from your Prisma schema
+        fullName, 
         email,
         phone,
         address,

@@ -1333,7 +1333,7 @@ export const forceSyncAllData = async (): Promise<{ success: boolean; message: s
     const stockResult = await getStockItemsFromDB()
     const productsResult = await getProductsFromDB()
 
-    if (!stockResult.success || !productsResult.success) {
+    if (!stockResult.length || !productsResult.length) {
       return {
         success: false,
         message: "Failed to fetch latest data from database",
@@ -1342,7 +1342,7 @@ export const forceSyncAllData = async (): Promise<{ success: boolean; message: s
 
     // Update IndexedDB with the latest data
     await saveStockItemToDB(stockResult.data)
-    saveProductsToIndexedDB(productsResult.data)
+    saveProductsToIndexedDB(productsResult)
 
     return {
       success: true,

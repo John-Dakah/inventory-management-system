@@ -444,7 +444,8 @@ export default function CustomersClient() {
                         onClick={() => setSelectedCustomer(customer.id)}
                       >
                         <Avatar className="h-10 w-10 mr-3">
-                          <AvatarFallback>{customer.name.charAt(0)}</AvatarFallback>
+                        <AvatarFallback>{customer.name?.charAt(0) ?? "?"}</AvatarFallback>
+
                         </Avatar>
                         <div className="flex-grow min-w-0">
                           <p className="font-medium truncate">{customer.name}</p>
@@ -498,7 +499,8 @@ export default function CustomersClient() {
                   <div className="flex justify-between items-start">
                     <div className="flex items-center gap-4">
                       <Avatar className="h-16 w-16">
-                        <AvatarFallback className="text-xl">{customerDetails.name.charAt(0)}</AvatarFallback>
+                      <AvatarFallback>{customerDetails.name?.charAt(0) ?? "?"}</AvatarFallback>
+
                       </Avatar>
                       <div>
                         <CardTitle>{customerDetails.name}</CardTitle>

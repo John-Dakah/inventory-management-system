@@ -70,14 +70,7 @@ export async function GET(req: Request) {
       _sum: { total: true },
     });
 
-    let totalExpenses = { _sum: { amount: 0 } };
-    try {
-      totalExpenses = await prisma.expense.aggregate({
-        _sum: { amount: true },
-      });
-    } catch (err) {
-      console.log('No expenses table found, defaulting expenses to 0.');
-    }
+    const totalExpenses = { _sum: { amount: 0 } }; // Defaulting expenses to 0 as 'expense' model does not exist
 
     return NextResponse.json({
       todaySales: todaySales._sum.total ?? 0,
