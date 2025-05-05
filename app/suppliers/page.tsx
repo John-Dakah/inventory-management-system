@@ -1,28 +1,36 @@
-"use client"
-
-import type React from "react"
-
-import { useState, useEffect } from "react"
-import { PlusIcon, Search, X } from 'lucide-react'
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { SuppliersTable } from "@/components/suppliers-table"
-import { SupplierForm } from "@/components/supplier-form"
-import { NetworkStatus } from "@/components/network-status"
-import { SyncManager } from "@/components/sync-manager"
-import { getSuppliers, getSupplierStats } from "@/lib/db"
-import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import type { Supplier } from "@/lib/db"
-
+"use client";
+import type { Supplier } from "@prisma/client";
+import { useState, useEffect } from "react";
+import { PlusIcon, Search, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { SuppliersTable } from "@/components/suppliers-table";
+import { SupplierForm } from "@/components/supplier-form";
+import { NetworkStatus } from "@/components/network-status";
+import { SyncManager } from "@/components/sync-manager";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
+import { SelectTrigger } from "@radix-ui/react-select";
+export interface LocalSupplier {
+  id: string;
+  name: string;
+  contactPerson: string;
+  email: string;
+  phone: string;
+  products: string;
+  status: string;
+  createdAt: string; // Ensure this matches the type (string or Date)
+  updatedAt: string; // Ensure this matches the type (string or Date)
+  createdById: string | null;
+}
 export default function SuppliersPage() {
-  const [open, setOpen] = useState(false)
-  const [editSupplier, setEditSupplier] = useState<Supplier | null>(null)
-  const [suppliers, setSuppliers] = useState<Supplier[]>([])
-  const [filteredSuppliers, setFilteredSuppliers] = useState<Supplier[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState("")
-  const [statusFilter, setStatusFilter] = useState<string>("All")
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+const [filteredSuppliers, setFilteredSuppliers] = useState<Supplier[]>([]);
+  const [open, setOpen] = useState(false);
+  const [editSupplier, setEditSupplier] = useState(null);  
+  const [isLoading, setIsLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All");
   const [stats, setStats] = useState({
     total: 0,
     active: 0,
@@ -30,31 +38,36 @@ export default function SuppliersPage() {
     activePercentage: 0,
     onHold: 0,
     inactive: 0,
-  })
-
-  // Load suppliers and stats
+  });
   useEffect(() => {
     const loadData = async () => {
-      setIsLoading(true)
+      setIsLoading(true);
       try {
-        // Load suppliers
-        const data = await getSuppliers()
-        setSuppliers(data)
-        setFilteredSuppliers(data)
+        // Fetch suppliers from the API
+        const suppliersResponse = await fetch("/api/suppliers");
+        const suppliersData = await suppliersResponse.json();
+        const formattedData: Supplier[] = suppliersData.map((supplier: any) => ({
+          ...supplier,
+          createdAt: supplier.createdAt.toString(),
+          updatedAt: supplier.updatedAt.toString(),
+          createdById: supplier.createdById || null, // Ensure createdById is included
+        }));
+        setSuppliers(formattedData);
+        setFilteredSuppliers(formattedData);
 
-        // Calculate stats
-        const supplierStats = await getSupplierStats()
-        setStats(supplierStats)
+        // Fetch stats from the API
+        const statsResponse = await fetch("/api/suppliers/stats");
+        const statsData = await statsResponse.json();
+        setStats(statsData);
       } catch (error) {
-        console.error("Error loading data:", error)
+        console.error("Error loading data:", error);
       } finally {
-        setIsLoading(false)
+        setIsLoading(false);
       }
-    }
+    };
 
-    loadData()
-  }, [])
-
+    loadData();
+  }, []);
   // Apply filters
   useEffect(() => {
     let results = suppliers
@@ -83,78 +96,25 @@ export default function SuppliersPage() {
   // Handle supplier saved (added or updated)
   const handleSupplierSaved = (supplier: Supplier) => {
     setSuppliers((prev) => {
-      // Check if supplier already exists
-      const exists = prev.some((s) => s.id === supplier.id)
-
+      const exists = prev.some((s) => s.id === supplier.id);
+  
       if (exists) {
-        // Update existing supplier
-        return prev.map((s) => (s.id === supplier.id ? supplier : s))
+        return prev.map((s) => (s.id === supplier.id ? supplier : s));
       } else {
-        // Add new supplier
-        return [supplier, ...prev]
+        return [supplier, ...prev];
       }
-    })
-
-    // Update stats
-    setStats((prev) => {
-      const newStats = { ...prev }
-
-      // If it's a new supplier
-      if (!editSupplier) {
-        newStats.total += 1
-
-        if (supplier.status === "Active") {
-          newStats.active += 1
-        } else if (supplier.status === "On Hold") {
-          newStats.onHold += 1
-        } else if (supplier.status === "Inactive") {
-          newStats.inactive += 1
-        }
-
-        // Check if it's a new supplier this month
-        const now = new Date()
-        const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-        const supplierDate = new Date(supplier.createdAt)
-
-        if (supplierDate >= firstDayOfMonth) {
-          newStats.newThisMonth += 1
-        }
-
-        // Recalculate percentage
-        newStats.activePercentage = Math.round((newStats.active / newStats.total) * 100)
+    });
+  
+    setFilteredSuppliers((prev) => {
+      const exists = prev.some((s) => s.id === supplier.id);
+  
+      if (exists) {
+        return prev.map((s) => (s.id === supplier.id ? supplier : s));
+      } else {
+        return [supplier, ...prev];
       }
-      // If it's an update and status changed
-      else if (editSupplier.status !== supplier.status) {
-        if (supplier.status === "Active" && editSupplier.status !== "Active") {
-          newStats.active += 1
-          newStats.inactive = Math.max(0, newStats.inactive - 1)
-          newStats.onHold = Math.max(0, newStats.onHold - 1)
-        } else if (supplier.status !== "Active" && editSupplier.status === "Active") {
-          newStats.active -= 1
-        } else if (supplier.status === "On Hold" && editSupplier.status !== "On Hold") {
-          newStats.onHold += 1
-          newStats.active = Math.max(0, newStats.active - 1)
-          newStats.inactive = Math.max(0, newStats.inactive - 1)
-        } else if (supplier.status !== "On Hold" && editSupplier.status === "On Hold") {
-          newStats.onHold -= 1
-        } else if (supplier.status === "Inactive" && editSupplier.status !== "Inactive") {
-          newStats.inactive += 1
-          newStats.active = Math.max(0, newStats.active - 1)
-          newStats.onHold = Math.max(0, newStats.onHold - 1)
-        } else if (supplier.status !== "Inactive" && editSupplier.status === "Inactive") {
-          newStats.inactive -= 1
-        }
-
-        // Recalculate percentage
-        newStats.activePercentage = Math.round((newStats.active / newStats.total) * 100)
-      }
-
-      return newStats
-    })
-
-    // Reset edit supplier
-    setEditSupplier(null)
-  }
+    });
+  };
 
   // Handle edit button click
   const handleEdit = (supplier: Supplier) => {
@@ -321,7 +281,7 @@ export default function SuppliersPage() {
             suppliers={filteredSuppliers}
             isLoading={isLoading}
             onEdit={handleEdit}
-            onDelete={handleDelete}
+            onDelete={(id) => setSuppliers((prev) => prev.filter((s) => s.id !== id))}
             onSupplierSaved={handleSupplierSaved}
           />
         </CardContent>

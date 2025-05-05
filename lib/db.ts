@@ -1,4 +1,5 @@
 // Type definitions
+import { PrismaClient } from "@prisma/client";
 export interface Product {
   id: string
   name: string
@@ -13,7 +14,17 @@ export interface Product {
   updatedAt: string
   createdById?: string | null
 }
-
+export interface Supplier {
+  id: string;
+  name: string;
+  contactPerson: string;
+  email: string;
+  phone: string;
+  products: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
 export interface StockItem {
   id: string
   name: string
@@ -51,7 +62,27 @@ export function isOnline(): boolean {
   }
   return true
 }
+export async function saveSupplier(supplier: Supplier): Promise<Supplier> {
+  // Example implementation
+  try {
+    const response = await fetch("/api/suppliers", {
+      method: supplier.id ? "PUT" : "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(supplier),
+    });
 
+    if (!response.ok) {
+      throw new Error("Failed to save supplier");
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Error in saveSupplier:", error);
+    throw error;
+  }
+}
 // Client-side function to get current user from cookies
 export async function getCurrentUser() {
   try {
@@ -68,6 +99,38 @@ export async function getCurrentUser() {
   }
 }
 
+
+const prisma = new PrismaClient();
+
+// Fetch all suppliers
+export async function getSuppliers() {
+  return await prisma.supplier.findMany();
+}
+
+// Fetch supplier statistics
+export async function getSupplierStats() {
+  const total = await prisma.supplier.count();
+  const active = await prisma.supplier.count({ where: { status: "Active" } });
+  const onHold = await prisma.supplier.count({ where: { status: "On Hold" } });
+  const inactive = await prisma.supplier.count({ where: { status: "Inactive" } });
+
+  const now = new Date();
+  const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const newThisMonth = await prisma.supplier.count({
+    where: { createdAt: { gte: firstDayOfMonth } },
+  });
+
+  const activePercentage = total > 0 ? Math.round((active / total) * 100) : 0;
+
+  return {
+    total,
+    active,
+    onHold,
+    inactive,
+    newThisMonth,
+    activePercentage,
+  };
+}
 // Get products - modified to only return products created by the current user
 export async function getProducts(): Promise<Product[]> {
   try {

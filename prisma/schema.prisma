@@ -44,6 +44,7 @@ model OUR_USER {
   products   Product[] // Products created by this user
   stockItems StockItem[] // Stock items created by this user
   stockTransactions StockTransaction[] // Stock transactions created by this user
+  suppliers  Supplier[] // Suppliers created by this user
 }
 
 // Product model
@@ -72,9 +73,11 @@ model Supplier {
   email         String
   phone         String
   products      String
-  status        String
+  status        String   @default("Active")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  createdBy     OUR_USER? @relation(fields: [createdById], references: [id])
+  createdById   String?  // Add this field to track who created the supplier
 }
 
 // StockItem model
