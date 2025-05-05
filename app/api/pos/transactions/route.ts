@@ -4,7 +4,7 @@ import prisma from "@/lib/prisma"
 
 export async function POST(request: Request) {
   try {
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
     const authCookie = cookieStore.get("auth")
 
     if (!authCookie) {

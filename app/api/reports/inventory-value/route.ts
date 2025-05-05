@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const url = new URL(request.url);
+    const whereClause = url.searchParams.get("whereClause")
+      ? JSON.parse(url.searchParams.get("whereClause")!)
+      : {};
+
     const products = await prisma.product.findMany({
+      where: whereClause,
       select: {
         price: true,
         quantity: true,

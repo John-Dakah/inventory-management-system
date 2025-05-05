@@ -4,7 +4,19 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import { v4 as uuidv4 } from "uuid"
 import { useSearchParams } from "next/navigation"
-import { ArrowDownIcon, ArrowUpIcon, ChevronDownIcon, FileTextIcon, FileSpreadsheetIcon, FilterIcon, Loader2Icon, SearchIcon, SlidersHorizontalIcon, XIcon, AlertCircle } from 'lucide-react'
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  ChevronDownIcon,
+  FileTextIcon,
+  FileSpreadsheetIcon,
+  FilterIcon,
+  Loader2Icon,
+  SearchIcon,
+  SlidersHorizontalIcon,
+  XIcon,
+  AlertCircle,
+} from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -280,7 +292,9 @@ export default function StockPage() {
 
   // Handle checkbox changes
   const handleCategoryChange = (category: string) => {
-    setSelectedCategories((prev) => (prev.includes(category) ? prev.filter((c) => c !== category) : [...prev, category]))
+    setSelectedCategories((prev) =>
+      prev.includes(category) ? prev.filter((c) => c !== category) : [...prev, category],
+    )
   }
 
   const handleLocationChange = (location: string) => {
@@ -973,6 +987,64 @@ export default function StockPage() {
     )
   }
 
+  // Add edit and delete functions for stock items
+  // Add these functions before the return statement:
+
+  // Handle stock item edit
+  const handleEditStockItem = (item: StockItem) => {
+    setAdjustmentForm({
+      productId: item.id,
+      newQuantity: item.quantity.toString(),
+      reason: "",
+      notes: "",
+    })
+    setIsAdjustmentOpen(true)
+  }
+
+  // Handle stock item delete
+  const handleDeleteStockItem = async (itemId: string) => {
+    try {
+      // Find the item to be deleted
+      const itemToDelete = stockItems.find((item) => item.id === itemId)
+      if (!itemToDelete) {
+        toast({
+          title: "Error",
+          description: "Item not found",
+          variant: "destructive",
+        })
+        return
+      }
+
+      // Remove from database
+      const response = await fetch(`/api/stock/items/${itemId}`, {
+        method: "DELETE",
+      })
+
+      if (!response.ok) {
+        throw new Error(`Failed to delete: ${response.statusText}`)
+      }
+
+      // Update local state
+      setStockItems((prev) => prev.filter((item) => item.id !== itemId))
+      setFilteredItems((prev) => prev.filter((item) => item.id !== itemId))
+
+      toast({
+        title: "Success",
+        description: `${itemToDelete.name} has been deleted`,
+      })
+    } catch (error) {
+      console.error("Error deleting stock item:", error)
+      toast({
+        title: "Error",
+        description: "Failed to delete stock item. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Now modify the table to include action buttons:
+  // Find the Table component in the return JSX and modify the TableHeader and TableRow:
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
@@ -1568,6 +1640,7 @@ export default function StockPage() {
                 <TableHead>Location</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Last Updated</TableHead>
+                <TableHead>Actions</TableHead> {/* Add this line */}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1600,11 +1673,55 @@ export default function StockPage() {
                       </Badge>
                     </TableCell>
                     <TableCell>{new Date(item.lastUpdated).toLocaleDateString()}</TableCell>
+                    <TableCell>
+                      <div className="flex space-x-2">
+                        <Button variant="outline" size="icon" onClick={() => handleEditStockItem(item)} title="Edit">
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="h-4 w-4"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                            <path d="m15 5 4 4" />
+                          </svg>
+                          <span className="sr-only">Edit</span>
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => handleDeleteStockItem(item.id)}
+                          title="Delete"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="h-4 w-4"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M3 6h18" />
+                            <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                            <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                          </svg>
+                          <span className="sr-only">Delete</span>
+                        </Button>
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center">
+                  <TableCell colSpan={9} className="h-24 text-center">
+                    {" "}
+                    {/* Update colspan to 9 to include the actions column */}
                     <div className="flex flex-col items-center justify-center text-muted-foreground">
                       <AlertCircle className="mb-2 h-8 w-8" />
                       <p>No results found.</p>

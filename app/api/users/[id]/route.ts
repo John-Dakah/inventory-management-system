@@ -2,195 +2,128 @@ import { type NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { cookies } from "next/headers"
 
-// Get a specific user by ID (only if created by the current admin)
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+// Get the current user from the session
+async function getCurrentUser() {
+  const cookieStore = cookies()
+  const authCookie = cookieStore.get("auth")
+
+  if (!authCookie) {
+    return null
+  }
+
+  return JSON.parse(authCookie.value)
+}
+
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const userId = params.id
+    const session = await getCurrentUser()
 
-    // Retrieve the authentication cookie
-    const authCookie = cookies().get("auth")
-
-    if (!authCookie) {
+    if (!session) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
 
-    // Parse the cookie to get admin data
-    const { id, role } = JSON.parse(authCookie.value)
+    const userId = params.id
 
-    // Check if the user is an admin
-    if (role !== "admin") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
-    }
-
-    // Fetch the user and verify they were created by this admin
-    const user = await prisma.oUR_USER.findFirst({
-      where: {
-        id: userId,
-        createdById: id,
-      },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        role: true,
-        phone: true,
-        department: true,
-        joinDate: true,
-        lastVisit: true,
-        status: true,
-        type: true,
-        visits: true,
-        totalSpent: true,
-        createdAt: true,
-        address: true,
-        notes: true,
-        transactions: {
-          select: {
-            id: true,
-            reference: true,
-            date: true,
-            total: true,
-            status: true,
-          },
-        },
-      },
+    // Get the user
+    const user = await prisma.oUR_USER.findUnique({
+      where: { id: userId },
     })
 
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 })
     }
 
-    return NextResponse.json({
-      message: "User fetched successfully",
-      user,
-    })
+    // Check if the user was created by the current admin
+    if (user.createdById !== session.id) {
+      return NextResponse.json({ error: "Not authorized to access this user" }, { status: 403 })
+    }
+
+    return NextResponse.json(user)
   } catch (error) {
     console.error("Error fetching user:", error)
-    return NextResponse.json({ error: "Error fetching user" }, { status: 500 })
+    return NextResponse.json({ error: "Failed to fetch user" }, { status: 500 })
   }
 }
 
-// Update a user (only if created by the current admin)
-export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const userId = params.id
+    const session = await getCurrentUser()
 
-    // Retrieve the authentication cookie
-    const authCookie = cookies().get("auth")
-
-    if (!authCookie) {
+    if (!session) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
 
-    // Parse the cookie to get admin data
-    const { id, role } = JSON.parse(authCookie.value)
+    const userId = params.id
+    const data = await request.json()
 
-    // Check if the user is an admin
-    if (role !== "admin") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
-    }
-
-    // Verify the user was created by this admin
-    const existingUser = await prisma.oUR_USER.findFirst({
-      where: {
-        id: userId,
-        createdById: id,
-      },
+    // Get the user to check if it was created by the current admin
+    const user = await prisma.oUR_USER.findUnique({
+      where: { id: userId },
     })
 
-    if (!existingUser) {
+    if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 })
     }
 
-    // Get update data from request body
-    const updateData = await req.json()
-
-    // Check if email is being changed and if it already exists
-    if (updateData.email && updateData.email !== existingUser.email) {
-      const emailExists = await prisma.oUR_USER.findFirst({
-        where: {
-          email: updateData.email,
-          id: { not: userId },
-        },
-      })
-
-      if (emailExists) {
-        return NextResponse.json(
-          { error: "A user with this email already exists" },
-          { status: 409 }, // Conflict status code
-        )
-      }
+    // Check if the user was created by the current admin
+    if (user.createdById !== session.id) {
+      return NextResponse.json({ error: "Not authorized to update this user" }, { status: 403 })
     }
 
     // Update the user
     const updatedUser = await prisma.oUR_USER.update({
-      where: {
-        id: userId,
-      },
-      data: updateData,
+      where: { id: userId },
+      data,
       select: {
         id: true,
-        email: true,
         fullName: true,
+        email: true,
         role: true,
         status: true,
+        createdAt: true,
+        updatedAt: true,
       },
     })
 
-    return NextResponse.json({
-      message: "User updated successfully",
-      user: updatedUser,
-    })
+    return NextResponse.json(updatedUser)
   } catch (error) {
     console.error("Error updating user:", error)
-    return NextResponse.json({ error: "Error updating user" }, { status: 500 })
+    return NextResponse.json({ error: "Failed to update user" }, { status: 500 })
   }
 }
 
-// Delete a user (only if created by the current admin)
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const userId = params.id
+    const session = await getCurrentUser()
 
-    // Retrieve the authentication cookie
-    const authCookie = cookies().get("auth")
-
-    if (!authCookie) {
+    if (!session) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
 
-    // Parse the cookie to get admin data
-    const { id, role } = JSON.parse(authCookie.value)
+    const userId = params.id
 
-    // Check if the user is an admin
-    if (role !== "admin") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
-    }
-
-    // Verify the user was created by this admin
-    const existingUser = await prisma.oUR_USER.findFirst({
-      where: {
-        id: userId,
-        createdById: id,
-      },
+    // Get the user to check if it was created by the current admin
+    const user = await prisma.oUR_USER.findUnique({
+      where: { id: userId },
     })
 
-    if (!existingUser) {
+    if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 })
+    }
+
+    // Check if the user was created by the current admin
+    if (user.createdById !== session.id) {
+      return NextResponse.json({ error: "Not authorized to delete this user" }, { status: 403 })
     }
 
     // Delete the user
     await prisma.oUR_USER.delete({
-      where: {
-        id: userId,
-      },
+      where: { id: userId },
     })
 
-    return NextResponse.json({
-      message: "User deleted successfully",
-    })
+    return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Error deleting user:", error)
-    return NextResponse.json({ error: "Error deleting user" }, { status: 500 })
+    return NextResponse.json({ error: "Failed to delete user" }, { status: 500 })
   }
 }

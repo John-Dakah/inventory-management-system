@@ -16,29 +16,37 @@ export async function getCurrentUser() {
 // Calculate total inventory value
 export async function calculateInventoryValue() {
   try {
-    const currentUser = await getCurrentUser()
+    const currentUser = await getCurrentUser();
 
     if (!currentUser) {
-      throw new Error("User not authenticated")
+      throw new Error("User not authenticated");
     }
 
-    // Build the query based on user role
-    const whereClause = currentUser.role !== "sales_person" ? { createdById: currentUser.id } : {}
+    // Build the query parameters based on the user's role
+    const whereClause = currentUser.role !== "sales_person" ? { createdById: currentUser.id } : {};
+    const queryParams = new URLSearchParams({
+      whereClause: JSON.stringify(whereClause),
+    });
 
-    // Get all products
-    const products = await fetch("/api/reports/inventory-value", {
-      method: "POST",
+    // Make a GET request to the API
+    const response = await fetch(`/api/reports/inventory-value?${queryParams.toString()}`, {
+      method: "GET",
       headers: {
-        "Content-Type": "application/json",
+        "Cache-Control": "no-cache",
       },
-      body: JSON.stringify({ whereClause }),
-    }).then((res) => res.json())
+    });
 
-    // Calculate total value
-    return products.reduce((total, product) => total + product.price * product.quantity, 0)
+    if (!response.ok) {
+      throw new Error("Failed to fetch inventory value");
+    }
+
+    const data = await response.json();
+
+    // Return the inventory value
+    return data.inventoryValue || 0;
   } catch (error) {
-    console.error("Error calculating inventory value:", error)
-    return 0
+    console.error("Error calculating inventory value:", error);
+    return 0;
   }
 }
 
@@ -51,9 +59,60 @@ export async function calculateStockTurnoverRate() {
       throw new Error("User not authenticated")
     }
 
-    // For demo purposes, return a fixed turnover rate
-    // In a real application, this would calculate the rate based on sales and average inventory
-    return 4.7
+    // Get the current date
+    const now = new Date()
+    const startOfYear = new Date(now.getFullYear(), 0, 1)
+
+    // Get cost of goods sold (COGS) - using transaction items
+    const cogsResponse = await fetch("/api/reports/cogs", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        whereClause: currentUser.role !== "sales_person" ? { createdById: currentUser.id } : {},
+        startDate: startOfYear.toISOString(),
+        endDate: now.toISOString(),
+      }),
+    })
+
+    if (!cogsResponse.ok) {
+      throw new Error("Failed to fetch COGS")
+    }
+
+    const cogsData = await cogsResponse.json()
+    const cogs = cogsData.cogs
+
+    // Get average inventory value
+    const inventoryResponse = await fetch("/api/reports/average-inventory", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        whereClause: currentUser.role !== "sales_person" ? { createdById: currentUser.id } : {},
+        startDate: startOfYear.toISOString(),
+        endDate: now.toISOString(),
+      }),
+    })
+
+    if (!inventoryResponse.ok) {
+      throw new Error("Failed to fetch average inventory")
+    }
+
+    const inventoryData = await inventoryResponse.json()
+    const averageInventory = inventoryData.averageInventory
+
+    // Calculate turnover rate
+    // If average inventory is 0, return 0 to avoid division by zero
+    if (averageInventory === 0) {
+      return 0
+    }
+
+    const turnoverRate = cogs / averageInventory
+
+    // Round to one decimal place
+    return Number.parseFloat(turnoverRate.toFixed(1))
   } catch (error) {
     console.error("Error calculating stock turnover rate:", error)
     return 0
@@ -69,39 +128,49 @@ export async function getInventoryValueTrends(timePeriod = "6months") {
       throw new Error("User not authenticated")
     }
 
-    // For demo purposes, generate mock data
-    // In a real application, this would query the database for historical inventory values
-    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-    const currentMonth = new Date().getMonth()
+    // Determine the start date based on the time period
+    const now = new Date()
+    let startDate
 
-    let numMonths
     switch (timePeriod) {
       case "30days":
-        numMonths = 1
+        startDate = new Date(now)
+        startDate.setDate(now.getDate() - 30)
         break
       case "3months":
-        numMonths = 3
+        startDate = new Date(now)
+        startDate.setMonth(now.getMonth() - 3)
         break
       case "12months":
-        numMonths = 12
+        startDate = new Date(now)
+        startDate.setFullYear(now.getFullYear() - 1)
         break
       case "6months":
       default:
-        numMonths = 6
+        startDate = new Date(now)
+        startDate.setMonth(now.getMonth() - 6)
         break
     }
 
-    // Generate data for the specified time period
-    const data = []
-    for (let i = numMonths - 1; i >= 0; i--) {
-      const monthIndex = (currentMonth - i + 12) % 12
-      data.push({
-        month: months[monthIndex],
-        value: Math.floor(Math.random() * 50000) + 100000,
-      })
+    // Fetch inventory value trends
+    const response = await fetch("/api/reports/inventory-trends", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        whereClause: currentUser.role !== "sales_person" ? { createdById: currentUser.id } : {},
+        startDate: startDate.toISOString(),
+        endDate: now.toISOString(),
+        timePeriod,
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error("Failed to fetch inventory trends")
     }
 
-    return data
+    return await response.json()
   } catch (error) {
     console.error("Error fetching inventory value trends:", error)
     return []
@@ -117,16 +186,15 @@ export async function getTopProductsByValue() {
       throw new Error("User not authenticated")
     }
 
-    // Build the query based on user role
-    const whereClause = currentUser.role !== "sales_person" ? { createdById: currentUser.id } : {}
-
     // Get products
     const response = await fetch("/api/reports/top-products", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ whereClause }),
+      body: JSON.stringify({
+        whereClause: currentUser.role !== "sales_person" ? { createdById: currentUser.id } : {},
+      }),
     })
 
     if (!response.ok) {
@@ -149,16 +217,29 @@ export async function getStockMovementTrends() {
       throw new Error("User not authenticated")
     }
 
-    // For demo purposes, generate mock data
-    // In a real application, this would query the database for historical stock movements
-    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"]
+    // Get the current date
+    const now = new Date()
+    const sixMonthsAgo = new Date(now)
+    sixMonthsAgo.setMonth(now.getMonth() - 6)
 
-    // Generate data for the last 6 months
-    return months.map((month) => ({
-      month,
-      stockIn: Math.floor(Math.random() * 500) + 200,
-      stockOut: Math.floor(Math.random() * 400) + 100,
-    }))
+    // Fetch stock movement trends
+    const response = await fetch("/api/reports/stock-movements", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        whereClause: currentUser.role !== "sales_person" ? { createdById: currentUser.id } : {},
+        startDate: sixMonthsAgo.toISOString(),
+        endDate: now.toISOString(),
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error("Failed to fetch stock movements")
+    }
+
+    return await response.json()
   } catch (error) {
     console.error("Error fetching stock movement trends:", error)
     return []
@@ -174,29 +255,22 @@ export async function getSupplierPerformance() {
       throw new Error("User not authenticated")
     }
 
-    // Build the query based on user role
-    const whereClause = currentUser.role !== "sales_person" ? { createdById: currentUser.id } : {}
-
-    // Get suppliers
+    // Fetch supplier performance
     const response = await fetch("/api/reports/supplier-performance", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ whereClause }),
+      body: JSON.stringify({
+        whereClause: currentUser.role !== "sales_person" ? { createdById: currentUser.id } : {},
+      }),
     })
 
     if (!response.ok) {
       throw new Error("Failed to fetch supplier performance")
     }
 
-    const suppliers = await response.json()
-
-    // For demo purposes, add random performance rates
-    return suppliers.map((supplier) => ({
-      name: supplier.name,
-      rate: Math.floor(Math.random() * 30) + 70, // Random rate between 70-100%
-    }))
+    return await response.json()
   } catch (error) {
     console.error("Error fetching supplier performance:", error)
     return []
@@ -212,36 +286,29 @@ export async function getOrdersBySupplier() {
       throw new Error("User not authenticated")
     }
 
-    // Build the query based on user role
-    const whereClause = currentUser.role !== "sales_person" ? { createdById: currentUser.id } : {}
-
-    // Get suppliers
-    const response = await fetch("/api/reports/supplier-performance", {
+    // Fetch orders by supplier
+    const response = await fetch("/api/reports/orders-by-supplier", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ whereClause }),
+      body: JSON.stringify({
+        whereClause: currentUser.role !== "sales_person" ? { createdById: currentUser.id } : {},
+      }),
     })
 
     if (!response.ok) {
-      throw new Error("Failed to fetch suppliers")
+      throw new Error("Failed to fetch orders by supplier")
     }
 
-    const suppliers = await response.json()
-
-    // For demo purposes, add random order counts
-    return suppliers.map((supplier) => ({
-      name: supplier.name,
-      orders: Math.floor(Math.random() * 50) + 10, // Random orders between 10-60
-    }))
+    return await response.json()
   } catch (error) {
     console.error("Error fetching orders by supplier:", error)
     return []
   }
 }
 
-// Get warehouse capacity utilization
+// Get warehouse capacity utilization - Real data from database
 export async function getWarehouseCapacityUtilization() {
   try {
     const currentUser = await getCurrentUser()
@@ -250,18 +317,22 @@ export async function getWarehouseCapacityUtilization() {
       throw new Error("User not authenticated")
     }
 
-    // For demo purposes, generate mock data
-    // In a real application, this would query the database for warehouse capacity
-    const warehouses = ["Main Warehouse", "East Wing", "West Wing", "North Storage"]
-
-    return warehouses.map((name) => {
-      const used = Math.floor(Math.random() * 60) + 20 // Random usage between 20-80%
-      return {
-        name,
-        used,
-        available: 100 - used,
-      }
+    // Fetch warehouse capacity utilization
+    const response = await fetch("/api/reports/warehouse-capacity", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        whereClause: currentUser.role !== "sales_person" ? { createdById: currentUser.id } : {},
+      }),
     })
+
+    if (!response.ok) {
+      throw new Error("Failed to fetch warehouse capacity")
+    }
+
+    return await response.json()
   } catch (error) {
     console.error("Error fetching warehouse capacity utilization:", error)
     return []
@@ -277,16 +348,15 @@ export async function getItemsByWarehouse() {
       throw new Error("User not authenticated")
     }
 
-    // Build the query based on user role
-    const whereClause = currentUser.role !== "sales_person" ? { createdById: currentUser.id } : {}
-
-    // Get stock items grouped by location
+    // Fetch items by warehouse
     const response = await fetch("/api/reports/items-by-warehouse", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ whereClause }),
+      body: JSON.stringify({
+        whereClause: currentUser.role !== "sales_person" ? { createdById: currentUser.id } : {},
+      }),
     })
 
     if (!response.ok) {
@@ -309,14 +379,23 @@ export async function generateReport(format = "excel") {
       throw new Error("User not authenticated")
     }
 
-    // For demo purposes, simulate report generation
-    // In a real application, this would generate an actual report file
-    await new Promise((resolve) => setTimeout(resolve, 1500)) // Simulate processing time
+    // Generate report
+    const response = await fetch("/api/reports/generate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        whereClause: currentUser.role !== "sales_person" ? { createdById: currentUser.id } : {},
+        format,
+      }),
+    })
 
-    return {
-      success: true,
-      filename: `inventory-report-${new Date().toISOString().split("T")[0]}.${format}`,
+    if (!response.ok) {
+      throw new Error("Failed to generate report")
     }
+
+    return await response.json()
   } catch (error) {
     console.error("Error generating report:", error)
     return {

@@ -3,273 +3,250 @@
 import { useState } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { toast } from "@/components/ui/use-toast"
-import { MoreHorizontal, Trash, Edit, AlertCircle, Download } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import { MoreHorizontal, Search } from "lucide-react"
 
-// Define User type based on what's returned from the server
-type User = {
+interface User {
   id: string
-  email: string
   fullName: string
-  department?: string | null
-  status: "ACTIVE" | "INACTIVE"
-  role: "admin" | "warehouse_manager" | "sales_person"
+  email: string
+  role: string
+  status: string
   createdAt: string
-  updatedAt: string
+}
+
+interface Pagination {
+  page: number
+  limit: number
+  totalCount: number
+  totalPages: number
 }
 
 interface UsersTableProps {
-  users: User[]
-  isLoading: boolean
-  onEdit: (user: User) => void
-  onDelete: (userId: string) => void
+  initialUsers: User[]
+  pagination: Pagination
+  filterStatus?: string
 }
 
-export function UsersTable({ users, isLoading, onEdit, onDelete }: UsersTableProps) {
-  const [isDeleting, setIsDeleting] = useState<string | null>(null)
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-  const [userToDelete, setUserToDelete] = useState<string | null>(null)
+export function UsersTable({ initialUsers, pagination, filterStatus }: UsersTableProps) {
+  const [users, setUsers] = useState<User[]>(initialUsers)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [currentPage, setCurrentPage] = useState(pagination.page)
+  // Add a loading state to show when fetching data
+  const [isLoading, setIsLoading] = useState(false)
 
-  // Delete user
-  const handleDelete = async (id: string) => {
-    setIsDeleting(id)
+  // Filter users based on search query
+  const filteredUsers = users.filter(
+    (user) =>
+      user.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      user.role.toLowerCase().includes(searchQuery.toLowerCase()),
+  )
+
+  // Function to handle user status change
+  const handleStatusChange = async (userId: string, newStatus: string) => {
     try {
-      await onDelete(id)
-    } catch (error) {
-      console.error("Error deleting user:", error)
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to delete user. Please try again.",
+      const response = await fetch(`/api/users/${userId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ status: newStatus }),
       })
+
+      if (response.ok) {
+        // Update the user in the local state
+        setUsers(users.map((user) => (user.id === userId ? { ...user, status: newStatus } : user)))
+      } else {
+        console.error("Failed to update user status")
+      }
+    } catch (error) {
+      console.error("Error updating user status:", error)
+    }
+  }
+
+  // Function to handle user deletion
+  const handleDeleteUser = async (userId: string) => {
+    if (confirm("Are you sure you want to delete this user? This action cannot be undone.")) {
+      try {
+        const response = await fetch(`/api/users/${userId}`, {
+          method: "DELETE",
+        })
+
+        if (response.ok) {
+          // Remove the user from the local state
+          setUsers(users.filter((user) => user.id !== userId))
+        } else {
+          console.error("Failed to delete user")
+        }
+      } catch (error) {
+        console.error("Error deleting user:", error)
+      }
+    }
+  }
+
+  // Function to load more users - update to handle loading state
+  const loadMoreUsers = async (page: number) => {
+    try {
+      setIsLoading(true)
+      const queryParams = new URLSearchParams({
+        page: page.toString(),
+        limit: pagination.limit.toString(),
+      })
+
+      if (filterStatus) {
+        queryParams.append("status", filterStatus)
+      }
+
+      const response = await fetch(`/api/users?${queryParams.toString()}`)
+
+      if (!response.ok) {
+        throw new Error(`Error: ${response.status}`)
+      }
+
+      const data = await response.json()
+
+      setUsers(data.users)
+      setCurrentPage(page)
+    } catch (error) {
+      console.error("Error loading more users:", error)
     } finally {
-      setIsDeleting(null)
-      setDeleteDialogOpen(false)
+      setIsLoading(false)
     }
   }
 
-  // Confirm delete
-  const confirmDelete = (id: string) => {
-    setUserToDelete(id)
-    setDeleteDialogOpen(true)
+  // Function to format date
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString)
+    return new Intl.DateTimeFormat("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    }).format(date)
   }
 
-  // Export users to CSV
-  const exportToCSV = () => {
-    try {
-      // Create CSV content
-      const headers = ["Full Name", "Email", "Department", "Role", "Status", "Created At"]
-      const csvContent = [
-        headers.join(","),
-        ...users.map((user) =>
-          [
-            `"${user.fullName.replace(/"/g, '""')}"`,
-            `"${user.email.replace(/"/g, '""')}"`,
-            `"${user.department?.replace(/"/g, '""') || ""}"`,
-            `"${formatRole(user.role)}"`,
-            `"${user.status}"`,
-            `"${new Date(user.createdAt).toLocaleDateString()}"`,
-          ].join(","),
-        ),
-      ].join("\n")
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="relative w-64">
+          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search users..."
+            className="pl-8"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+        <Button variant="outline">Add User</Button>
+      </div>
 
-      // Create download link
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement("a")
-      link.setAttribute("href", url)
-      link.setAttribute("download", `users-export-${new Date().toISOString().split("T")[0]}.csv`)
-      link.style.visibility = "hidden"
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(url)
-
-      toast({
-        title: "Export Successful",
-        description: `Exported ${users.length} users to CSV.`,
-      })
-    } catch (error) {
-      console.error("Error exporting users:", error)
-      toast({
-        variant: "destructive",
-        title: "Export Failed",
-        description: "Failed to export users. Please try again.",
-      })
-    }
-  }
-
-  // Render loading state
-  if (isLoading) {
-    return (
       <div className="rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Full Name</TableHead>
+              <TableHead>Name</TableHead>
               <TableHead>Email</TableHead>
-              <TableHead>Department</TableHead>
               <TableHead>Role</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead className="w-[70px]"></TableHead>
+              <TableHead>Created</TableHead>
+              <TableHead className="w-[80px]">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {Array.from({ length: 5 }).map((_, index) => (
-              <TableRow key={index}>
-                <TableCell>
-                  <div className="h-5 w-32 animate-pulse rounded-md bg-muted" />
-                </TableCell>
-                <TableCell>
-                  <div className="h-5 w-40 animate-pulse rounded-md bg-muted" />
-                </TableCell>
-                <TableCell>
-                  <div className="h-5 w-28 animate-pulse rounded-md bg-muted" />
-                </TableCell>
-                <TableCell>
-                  <div className="h-5 w-28 animate-pulse rounded-md bg-muted" />
-                </TableCell>
-                <TableCell>
-                  <div className="h-5 w-16 animate-pulse rounded-md bg-muted" />
-                </TableCell>
-                <TableCell>
-                  <div className="h-8 w-8 animate-pulse rounded-md bg-muted" />
+            {isLoading ? (
+              <TableRow>
+                <TableCell colSpan={6} className="h-24 text-center">
+                  Loading users...
                 </TableCell>
               </TableRow>
-            ))}
+            ) : filteredUsers.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} className="h-24 text-center">
+                  No users found.
+                </TableCell>
+              </TableRow>
+            ) : (
+              filteredUsers.map((user) => (
+                <TableRow key={user.id}>
+                  <TableCell className="font-medium">{user.fullName}</TableCell>
+                  <TableCell>{user.email}</TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className="capitalize">
+                      {user.role.replace("_", " ")}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={user.status === "active" ? "success" : "destructive"} className="capitalize">
+                      {user.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{formatDate(user.createdAt)}</TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" className="h-8 w-8 p-0">
+                          <span className="sr-only">Open menu</span>
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                        <DropdownMenuItem onClick={() => alert(`Edit user: ${user.fullName}`)}>Edit</DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        {user.status === "active" ? (
+                          <DropdownMenuItem onClick={() => handleStatusChange(user.id, "inactive")}>
+                            Deactivate
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem onClick={() => handleStatusChange(user.id, "active")}>
+                            Activate
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem className="text-red-600" onClick={() => handleDeleteUser(user.id)}>
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
           </TableBody>
         </Table>
       </div>
-    )
-  }
 
-  // Render empty state
-  if (users.length === 0) {
-    return (
-      <div className="flex flex-col gap-4">
-        <div className="flex justify-end">
-          <Button variant="outline" onClick={exportToCSV} disabled={true}>
-            <Download className="mr-2 h-4 w-4" />
-            Export
+      {pagination.totalPages > 1 && (
+        <div className="flex items-center justify-end space-x-2 py-4">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => loadMoreUsers(currentPage - 1)}
+            disabled={currentPage === 1}
+          >
+            Previous
+          </Button>
+          <div className="text-sm text-muted-foreground">
+            Page {currentPage} of {pagination.totalPages}
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => loadMoreUsers(currentPage + 1)}
+            disabled={currentPage === pagination.totalPages}
+          >
+            Next
           </Button>
         </div>
-        <div className="rounded-md border border-dashed p-8 text-center">
-          <AlertCircle className="mx-auto h-12 w-12 text-muted-foreground" />
-          <h3 className="mt-4 text-lg font-semibold">No users found</h3>
-          <p className="mt-2 text-sm text-muted-foreground">Add your first user to get started.</p>
-        </div>
-      </div>
-    )
-  }
-
-  // Format role for display
-  function formatRole(role: string) {
-    switch (role) {
-      case "admin":
-        return "Admin"
-      case "warehouse_manager":
-        return "Warehouse Manager"
-      case "sales_person":
-        return "Sales Person"
-      default:
-        return role
-    }
-  }
-
-  // Render users table
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex justify-end">
-        <Button variant="outline" onClick={exportToCSV}>
-          <Download className="mr-2 h-4 w-4" />
-          Export
-        </Button>
-      </div>
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Full Name</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Department</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="w-[70px]"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {users.map((user) => (
-              <TableRow key={user.id}>
-                <TableCell className="font-medium">{user.fullName}</TableCell>
-                <TableCell>{user.email}</TableCell>
-                <TableCell>{user.department || "-"}</TableCell>
-                <TableCell>{formatRole(user.role)}</TableCell>
-                <TableCell>
-                  <Badge variant={user.status === "ACTIVE" ? "success" : "destructive"}>{user.status}</Badge>
-                </TableCell>
-                <TableCell>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon">
-                        <MoreHorizontal className="h-4 w-4" />
-                        <span className="sr-only">Open menu</span>
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem className="cursor-pointer" onClick={() => onEdit(user)}>
-                        <Edit className="mr-2 h-4 w-4" />
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        className="cursor-pointer text-destructive focus:text-destructive"
-                        onClick={() => confirmDelete(user.id)}
-                        disabled={isDeleting === user.id}
-                      >
-                        <Trash className="mr-2 h-4 w-4" />
-                        {isDeleting === user.id ? "Deleting..." : "Delete"}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the user account and remove their data from the
-              system.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => userToDelete && handleDelete(userToDelete)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {isDeleting ? "Deleting..." : "Delete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      )}
     </div>
   )
 }
-
