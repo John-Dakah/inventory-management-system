@@ -18,6 +18,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AlertCircle } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { useToast } from "@/components/ui/use-toast"
 
 type Product = {
   id?: string
@@ -28,7 +29,12 @@ type Product = {
   quantity: number
   category: string
   vendor: string
-  imageUrl: string
+  imageUrl?: string
+}
+
+type Supplier = {
+  id: string
+  name: string
 }
 
 interface ProductFormProps {
@@ -56,9 +62,11 @@ export function ProductForm({
     quantity: 0,
     category: "",
     vendor: "",
-    imageUrl: "",
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [customCategory, setCustomCategory] = useState("")
+  const [userSuppliers, setUserSuppliers] = useState<Supplier[]>([])
+  const { toast } = useToast()
 
   useEffect(() => {
     if (editProduct) {
@@ -72,11 +80,30 @@ export function ProductForm({
         quantity: 0,
         category: "",
         vendor: "",
-        imageUrl: "",
       })
     }
     setErrors({})
+    setCustomCategory("")
   }, [editProduct, open])
+
+  // Fetch user's suppliers
+  useEffect(() => {
+    const fetchSuppliers = async () => {
+      try {
+        const response = await fetch("/api/suppliers")
+        if (response.ok) {
+          const data = await response.json()
+          setUserSuppliers(data.data || [])
+        }
+      } catch (error) {
+        console.error("Error fetching suppliers:", error)
+      }
+    }
+
+    if (open) {
+      fetchSuppliers()
+    }
+  }, [open])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
@@ -132,7 +159,7 @@ export function ProductForm({
     return Object.keys(newErrors).length === 0
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     if (!validateForm()) {
@@ -143,6 +170,25 @@ export function ProductForm({
       ...product,
       price: Number(product.price),
       quantity: Number(product.quantity),
+    }
+
+    // Check if SKU already exists (only for new products)
+    if (!editProduct) {
+      try {
+        const response = await fetch(`/api/products/check-sku?sku=${encodeURIComponent(product.sku)}`)
+        const data = await response.json()
+
+        if (data.exists) {
+          toast({
+            title: "Product already exists",
+            description: `A product with SKU "${product.sku}" is already in your inventory. Please use a different SKU or update the existing product.`,
+            variant: "destructive",
+          })
+          return
+        }
+      } catch (error) {
+        console.error("Error checking SKU:", error)
+      }
     }
 
     onProductSaved(productToSave)
@@ -240,27 +286,54 @@ export function ProductForm({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="category">Category</Label>
-              <Select value={product.category} onValueChange={(value) => handleSelectChange("category", value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select category" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  {categories.map((category) => (
-                    <SelectItem key={category} value={category}>
-                      {category}
-                    </SelectItem>
-                  ))}
-                  <SelectItem value="new">+ Add new category</SelectItem>
-                </SelectContent>
-              </Select>
-              {product.category === "new" && (
-                <Input
-                  placeholder="Enter new category"
-                  className="mt-2"
-                  value=""
-                  onChange={(e) => handleSelectChange("category", e.target.value)}
-                />
+              {product.category === "new" ? (
+                <div className="flex gap-2">
+                  <Input
+                    id="customCategory"
+                    placeholder="Enter new category"
+                    value={customCategory}
+                    onChange={(e) => setCustomCategory(e.target.value)}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      if (customCategory.trim()) {
+                        handleSelectChange("category", customCategory.trim())
+                        setCustomCategory("")
+                      }
+                    }}
+                  >
+                    Add
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setCustomCategory("")
+                      handleSelectChange("category", "")
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <Select value={product.category} onValueChange={(value) => handleSelectChange("category", value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {categories.map((category) => (
+                      <SelectItem key={category} value={category}>
+                        {category}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="new">+ Add new category</SelectItem>
+                  </SelectContent>
+                </Select>
               )}
             </div>
 
@@ -272,34 +345,14 @@ export function ProductForm({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">None</SelectItem>
-                  {vendors.map((vendor) => (
-                    <SelectItem key={vendor} value={vendor}>
-                      {vendor}
+                  {userSuppliers.map((supplier) => (
+                    <SelectItem key={supplier.id} value={supplier.name}>
+                      {supplier.name}
                     </SelectItem>
                   ))}
-                  <SelectItem value="new">+ Add new vendor</SelectItem>
                 </SelectContent>
               </Select>
-              {product.vendor === "new" && (
-                <Input
-                  placeholder="Enter new vendor"
-                  className="mt-2"
-                  value=""
-                  onChange={(e) => handleSelectChange("vendor", e.target.value)}
-                />
-              )}
             </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="imageUrl">Image URL</Label>
-            <Input
-              id="imageUrl"
-              name="imageUrl"
-              value={product.imageUrl}
-              onChange={handleChange}
-              placeholder="https://example.com/image.jpg"
-            />
           </div>
 
           <DialogFooter>
