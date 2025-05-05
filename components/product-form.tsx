@@ -221,20 +221,20 @@ export function ProductForm({
               {errors.price && <p className="text-sm text-destructive">{errors.price}</p>}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="quantity">Quantity</Label>
-              <Input
-                id="quantity"
-                name="quantity"
-                type="number"
-                min="0"
-                step="1"
-                value={product.quantity}
-                onChange={handleChange}
-                className={errors.quantity ? "border-destructive" : ""}
-              />
-              {errors.quantity && <p className="text-sm text-destructive">{errors.quantity}</p>}
-            </div>
+            {/* Only show quantity field when editing an existing product */}
+            {editProduct && (
+              <div className="grid gap-2">
+                <Label htmlFor="quantity">Quantity</Label>
+                <Input
+                  type="number"
+                  id="quantity"
+                  min="0"
+                  placeholder="0"
+                  value={product.quantity}
+                  onChange={(e) => setProduct({ ...product, quantity: Number.parseInt(e.target.value) || 0 })}
+                />
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">

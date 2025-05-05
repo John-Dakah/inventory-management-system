@@ -1,5 +1,4 @@
 // Type definitions
-import { PrismaClient } from "@prisma/client";
 export interface Product {
   id: string
   name: string
@@ -14,17 +13,7 @@ export interface Product {
   updatedAt: string
   createdById?: string | null
 }
-export interface Supplier {
-  id: string;
-  name: string;
-  contactPerson: string;
-  email: string;
-  phone: string;
-  products: string;
-  status: string;
-  createdAt: string;
-  updatedAt: string;
-}
+
 export interface StockItem {
   id: string
   name: string
@@ -55,6 +44,19 @@ export interface StockTransaction {
   createdById?: string | null
 }
 
+export interface Supplier {
+  id: string
+  name: string
+  contactPerson: string
+  email: string
+  phone: string
+  products: string
+  status: string
+  createdAt: string
+  updatedAt: string
+  createdById?: string | null
+}
+
 // Check if we're online
 export function isOnline(): boolean {
   if (typeof navigator !== "undefined") {
@@ -62,25 +64,33 @@ export function isOnline(): boolean {
   }
   return true
 }
-export async function saveSupplier(supplier: Supplier): Promise<Supplier> {
-  // Example implementation
+
+import { openDB } from "idb";
+ // Ensure the path is correct
+
+const DB_NAME = "stock_management_db";
+const DB_VERSION = 1;
+const TRANSACTIONS_STORE = "stock_transactions";
+
+// Initialize IndexedDB
+async function getDB() {
+  return openDB(DB_NAME, DB_VERSION, {
+    upgrade(db) {
+      if (!db.objectStoreNames.contains(TRANSACTIONS_STORE)) {
+        db.createObjectStore(TRANSACTIONS_STORE, { keyPath: "id" });
+      }
+    },
+  });
+}
+
+// Function to retrieve cached stock transactions
+export async function getCachedStockTransactions(): Promise<StockTransaction[]> {
   try {
-    const response = await fetch("/api/suppliers", {
-      method: supplier.id ? "PUT" : "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(supplier),
-    });
-
-    if (!response.ok) {
-      throw new Error("Failed to save supplier");
-    }
-
-    return await response.json();
+    const db = await getDB();
+    return await db.getAll(TRANSACTIONS_STORE);
   } catch (error) {
-    console.error("Error in saveSupplier:", error);
-    throw error;
+    console.error("Failed to retrieve cached stock transactions:", error);
+    return [];
   }
 }
 // Client-side function to get current user from cookies
@@ -98,38 +108,53 @@ export async function getCurrentUser() {
     return null
   }
 }
+export async function getStockTransactions(): Promise<StockTransaction[]> {
+  try {
+    const currentUser = await getCurrentUser();
 
+    if (!currentUser) {
+      throw new Error("User not authenticated");
+    }
 
-const prisma = new PrismaClient();
+    // If online, fetch from API
+    if (isOnline()) {
+      const response = await fetch("/api/stock/transactions", {
+        headers: {
+          "Cache-Control": "no-cache",
+        },
+      });
 
-// Fetch all suppliers
-export async function getSuppliers() {
-  return await prisma.supplier.findMany();
-}
+      if (!response.ok) {
+        throw new Error("Failed to fetch stock transactions");
+      }
 
-// Fetch supplier statistics
-export async function getSupplierStats() {
-  const total = await prisma.supplier.count();
-  const active = await prisma.supplier.count({ where: { status: "Active" } });
-  const onHold = await prisma.supplier.count({ where: { status: "On Hold" } });
-  const inactive = await prisma.supplier.count({ where: { status: "Inactive" } });
+      const data = await response.json();
 
-  const now = new Date();
-  const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const newThisMonth = await prisma.supplier.count({
-    where: { createdAt: { gte: firstDayOfMonth } },
-  });
+      // Filter transactions based on the current user's role
+      if (currentUser.role !== "sales_person") {
+        return data.transactions.filter(
+          (transaction: StockTransaction) => transaction.createdById === currentUser.id
+        );
+      }
 
-  const activePercentage = total > 0 ? Math.round((active / total) * 100) : 0;
+      return data.transactions;
+    } else {
+      // If offline, get from IndexedDB
+      const cachedTransactions = await getCachedStockTransactions();
 
-  return {
-    total,
-    active,
-    onHold,
-    inactive,
-    newThisMonth,
-    activePercentage,
-  };
+      // Filter transactions based on the current user's role
+      if (currentUser.role !== "sales_person") {
+        return cachedTransactions.filter(
+          (transaction) => transaction.createdById === currentUser.id
+        );
+      }
+
+      return cachedTransactions;
+    }
+  } catch (error) {
+    console.error("Error fetching stock transactions:", error);
+    return [];
+  }
 }
 // Get products - modified to only return products created by the current user
 export async function getProducts(): Promise<Product[]> {
@@ -272,6 +297,211 @@ export async function getStockItems(): Promise<StockItem[]> {
   }
 }
 
+// Get suppliers - modified to only return suppliers created by the current user
+export async function getSuppliers(): Promise<Supplier[]> {
+  try {
+    const currentUser = await getCurrentUser()
+
+    if (!currentUser) {
+      throw new Error("User not authenticated")
+    }
+
+    // If online, fetch from API
+    if (isOnline()) {
+      const response = await fetch("/api/suppliers", {
+        headers: {
+          "Cache-Control": "no-cache",
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch suppliers from API")
+      }
+
+      const data = await response.json()
+      return data.suppliers || []
+    } else {
+      // If offline, get from IndexedDB
+      const cachedSuppliers = await getCachedSuppliers()
+
+      // Filter by current user ID
+      if (currentUser.role === "sales_person") {
+        return cachedSuppliers
+      } else {
+        return cachedSuppliers.filter((supplier) => supplier.createdById === currentUser.id)
+      }
+    }
+  } catch (error) {
+    console.error("Error fetching suppliers:", error)
+
+    // Try to get from cache as fallback
+    const cachedSuppliers = await getCachedSuppliers()
+    const currentUser = await getCurrentUser()
+
+    // Filter by current user ID if we have a user
+    if (currentUser && currentUser.role !== "sales_person") {
+      return cachedSuppliers.filter((supplier) => supplier.createdById === currentUser.id)
+    }
+
+    return cachedSuppliers
+  }
+}
+
+// Get a specific supplier
+export async function getSupplier(id: string): Promise<Supplier | null> {
+  try {
+    const currentUser = await getCurrentUser()
+
+    if (!currentUser) {
+      throw new Error("User not authenticated")
+    }
+
+    // If online, fetch from API
+    if (isOnline()) {
+      const response = await fetch(`/api/suppliers/${id}`)
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch supplier")
+      }
+
+      const supplier = await response.json()
+
+      // Check if the supplier belongs to the current user
+      if (currentUser.role !== "sales_person" && supplier.createdById !== currentUser.id) {
+        return null
+      }
+
+      return supplier
+    } else {
+      // If offline, get from IndexedDB
+      const cachedSuppliers = await getCachedSuppliers()
+      const supplier = cachedSuppliers.find((s) => s.id === id)
+
+      // Check if the supplier belongs to the current user
+      if (supplier && currentUser.role !== "sales_person" && supplier.createdById !== currentUser.id) {
+        return null
+      }
+
+      return supplier || null
+    }
+  } catch (error) {
+    console.error("Error fetching supplier:", error)
+    return null
+  }
+}
+
+// Save a supplier - add createdById
+export async function saveSupplier(supplier: Supplier): Promise<Supplier> {
+  try {
+    const currentUser = await getCurrentUser()
+
+    if (!currentUser) {
+      throw new Error("User not authenticated")
+    }
+
+    // Add the current user ID to the supplier if it's a new supplier
+    const supplierWithUser = {
+      ...supplier,
+      createdById: supplier.createdById || currentUser.id,
+    }
+
+    // If online, save to API
+    if (isOnline()) {
+      const method = supplier.id ? "PUT" : "POST"
+      const url = supplier.id ? `/api/suppliers/${supplier.id}` : "/api/suppliers"
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(supplierWithUser),
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to save supplier")
+      }
+
+      const savedSupplier = await response.json()
+
+      // Also save to IndexedDB for offline access
+      await cacheSupplier(savedSupplier)
+
+      return savedSupplier
+    } else {
+      // If offline, save to IndexedDB
+      await cacheSupplier(supplierWithUser)
+      return supplierWithUser
+    }
+  } catch (error) {
+    console.error("Error saving supplier:", error)
+    throw error
+  }
+}
+
+// Delete a supplier
+export async function deleteSupplier(id: string): Promise<boolean> {
+  try {
+    const currentUser = await getCurrentUser()
+
+    if (!currentUser) {
+      throw new Error("User not authenticated")
+    }
+
+    // If online, delete from API
+    if (isOnline()) {
+      const response = await fetch(`/api/suppliers/${id}`, {
+        method: "DELETE",
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to delete supplier")
+      }
+
+      // Also delete from IndexedDB
+      await removeCachedSupplier(id)
+
+      return true
+    } else {
+      // If offline, mark for deletion in IndexedDB
+      await markSupplierForDeletion(id)
+      return true
+    }
+  } catch (error) {
+    console.error("Error deleting supplier:", error)
+    throw error
+  }
+}
+
+// Get supplier statistics
+export async function getSupplierStats(): Promise<{
+  total: number
+  active: number
+  newThisMonth: number
+  activePercentage: number
+  onHold: number
+  inactive: number
+}> {
+  try {
+    const response = await fetch("/api/suppliers/stats")
+    if (!response.ok) {
+      throw new Error("Failed to fetch supplier stats")
+    }
+    return await response.json()
+  } catch (error) {
+    console.error("Error fetching supplier stats:", error)
+    // Return default stats
+    return {
+      total: 0,
+      active: 0,
+      newThisMonth: 0,
+      activePercentage: 0,
+      onHold: 0,
+      inactive: 0,
+    }
+  }
+}
+
 // Save a stock item - add createdById
 export async function saveStockItem(item: StockItem): Promise<StockItem> {
   try {
@@ -375,12 +605,29 @@ export async function getCachedStockItems(): Promise<StockItem[]> {
   return []
 }
 
+export async function getCachedSuppliers(): Promise<Supplier[]> {
+  // Implementation would use IndexedDB to get cached suppliers
+  return []
+}
+
 export async function cacheStockItem(item: StockItem): Promise<void> {
   // Implementation would use IndexedDB to cache a stock item
 }
 
 export async function cacheStockTransaction(transaction: StockTransaction): Promise<void> {
   // Implementation would use IndexedDB to cache a stock transaction
+}
+
+export async function cacheSupplier(supplier: Supplier): Promise<void> {
+  // Implementation would use IndexedDB to cache a supplier
+}
+
+export async function removeCachedSupplier(id: string): Promise<void> {
+  // Implementation would use IndexedDB to remove a cached supplier
+}
+
+export async function markSupplierForDeletion(id: string): Promise<void> {
+  // Implementation would mark a supplier for deletion in IndexedDB
 }
 
 export async function getStockStats(): Promise<any> {
@@ -391,63 +638,8 @@ export async function getStockStats(): Promise<any> {
     }
     return await response.json()
   } catch (error) {
-<<<<<<< HEAD
-    console.error("Error checking storage quota:", error)
-    return { used: 0, total: 0, percentUsed: 0 }
-  }
-}
-// Initialize database on load
-;(async () => {
-  try {
-    await ensureDBInitialized()
-  } catch (error) {
-    console.error("Initialization error:", error)
-  }
-})()
-
-export async function getProduct(id: string): Promise<Product | null> {
-  try {
-    const db = await getDB()
-    const product = await db.get("products", id)
-    return product ?? null
-  } catch (error) {
-    console.error("Error getting product from IndexedDB:", error)
-
-    // Fallback to searching in localStorage
-    const products = await getProducts()
-    return products.find((p) => p.id === id) || null
-  }
-}
-// sdfghjkl;'fghjkl;fghjkl;dfghjkldfghjkfghjkghj
-
-export const forceSyncAllData = async (): Promise<{ success: boolean; message: string }> => {
-  if (!isOnline()) {
-    return { success: false, message: "Cannot sync while offline" }
-  }
-
-  try {
-    // First process any pending sync queue items
-    await processSyncQueue()
-
-    // Then fetch fresh data from the database
-    const stockResult = await getStockItemsFromDB()
-    const productsResult = await getProductsFromDB()
-
-    if (!stockResult.length || !productsResult.length) {
-      return {
-        success: false,
-        message: "Failed to fetch latest data from database",
-      }
-    }
-
-    // Update IndexedDB with the latest data
-    await saveStockItemToDB(stockResult.data)
-    saveProductsToIndexedDB(productsResult)
-
-=======
     console.error("Error fetching stock stats:", error)
     // Return default stats
->>>>>>> 5bfc89bf736b174372854b4a6872bb8e0da51f2c
     return {
       totalItems: 0,
       totalUnits: 0,

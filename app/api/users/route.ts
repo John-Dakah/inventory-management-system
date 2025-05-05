@@ -1,121 +1,151 @@
 import { type NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { cookies } from "next/headers"
-import bcrypt from "bcryptjs"
 
-// Get all users created by the current admin (excluding the admin)
-export async function GET(req: NextRequest) {
+// Get the current user from the session
+async function getCurrentUser() {
+  const cookieStore = cookies()
+  const authCookie = cookieStore.get("auth")
+
+  if (!authCookie) {
+    return null
+  }
+
+  return JSON.parse(authCookie.value)
+}
+
+export async function GET(request: NextRequest) {
   try {
-    // Retrieve the authentication cookie
-    const authCookie = (await cookies()).get("auth")
+    const session = await getCurrentUser()
 
-    if (!authCookie) {
+    if (!session) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
 
-    // Parse the cookie to get user data
-    const { id, role } = JSON.parse(authCookie.value)
+    // Get query parameters
+    const searchParams = request.nextUrl.searchParams
+    const page = Number.parseInt(searchParams.get("page") || "1")
+    const limit = Number.parseInt(searchParams.get("limit") || "10")
+    const status = searchParams.get("status")
+    const role = searchParams.get("role")
+    const search = searchParams.get("search")
 
-    // Check if the user is an admin
-    if (role !== "admin") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
+    // Always filter by createdById - each admin can only see users they created
+    const whereClause: any = {
+      createdById: session.id,
     }
 
-    // Fetch users created by this admin, excluding the admin themselves
+    // Add filters if provided
+    if (status) {
+      whereClause.status = status
+    }
+
+    if (role) {
+      whereClause.role = role
+    }
+
+    if (search) {
+      whereClause.OR = [
+        { fullName: { contains: search, mode: "insensitive" } },
+        { email: { contains: search, mode: "insensitive" } },
+      ]
+    }
+
+    // Count total users matching the filter
+    const totalCount = await prisma.oUR_USER.count({
+      where: whereClause,
+    })
+
+    // Get users with pagination
     const users = await prisma.oUR_USER.findMany({
-      where: {
-        createdById: id,
-        id: { not: id }, // Exclude the admin themselves
+      where: whereClause,
+      skip: (page - 1) * limit,
+      take: limit,
+      orderBy: {
+        createdAt: "desc",
       },
       select: {
         id: true,
-        email: true,
         fullName: true,
+        email: true,
         role: true,
-        phone: true,
-        department: true,
-        joinDate: true,
-        lastVisit: true,
         status: true,
-        type: true,
-        visits: true,
-        totalSpent: true,
         createdAt: true,
+        updatedAt: true,
       },
     })
 
+    // Calculate total pages
+    const totalPages = Math.ceil(totalCount / limit)
+
     return NextResponse.json({
-      message: "Users fetched successfully",
       users,
+      pagination: {
+        page,
+        limit,
+        totalCount,
+        totalPages,
+      },
     })
   } catch (error) {
     console.error("Error fetching users:", error)
-    return NextResponse.json({ error: "Error fetching users" }, { status: 500 })
+    return NextResponse.json({ error: "Failed to fetch users" }, { status: 500 })
   }
 }
 
-// Create a new user by the admin
-export async function POST(req: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
-    // Retrieve the authentication cookie
-    const authCookie = (await cookies()).get("auth")
+    const session = await getCurrentUser()
 
-    if (!authCookie) {
+    if (!session) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
 
-    // Parse the cookie to get admin data
-    const { id, role } = JSON.parse(authCookie.value)
-
-    // Check if the user is an admin
-    if (role !== "admin") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
+    // Only admins can create users
+    if (session.role !== "admin") {
+      return NextResponse.json({ error: "Not authorized to create users" }, { status: 403 })
     }
 
-    // Get user data from request body
-    const userData = await req.json()
+    const data = await request.json()
 
-    // Check if email already exists
+    // Validate required fields
+    if (!data.email || !data.fullName || !data.role || !data.password) {
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+    }
+
+    // Check if user with email already exists
     const existingUser = await prisma.oUR_USER.findUnique({
-      where: {
-        email: userData.email,
-      },
+      where: { email: data.email },
     })
 
     if (existingUser) {
-      return NextResponse.json(
-        { error: "A user with this email already exists" },
-        { status: 409 }, // Conflict status code
-      )
+      return NextResponse.json({ error: "User with this email already exists" }, { status: 409 })
     }
 
-    // Hash the password if provided
-    if (userData.password) {
-      userData.password = await bcrypt.hash(userData.password, 10)
-    }
-
-    // Create new user with the admin as creator
-    const newUser = await prisma.oUR_USER.create({
+    // Create the user
+    const user = await prisma.oUR_USER.create({
       data: {
-        ...userData,
-        createdById: id,
+        email: data.email,
+        fullName: data.fullName,
+        role: data.role,
+        password: data.password, // In a real app, hash this password
+        status: data.status || "active",
+        createdById: session.id,
+      },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        role: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
       },
     })
 
-    return NextResponse.json(
-      {
-        message: "User created successfully",
-        user: {
-          id: newUser.id,
-          email: newUser.email,
-          fullName: newUser.fullName,
-          role: newUser.role,
-        },
-      },
-      { status: 201 },
-    )
+    return NextResponse.json(user, { status: 201 })
   } catch (error) {
     console.error("Error creating user:", error)
-    return NextResponse.json({ error: "Error creating user" }, { status: 500 })
+    return NextResponse.json({ error: "Failed to create user" }, { status: 500 })
   }
 }
