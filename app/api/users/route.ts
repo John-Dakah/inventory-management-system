@@ -7,7 +7,7 @@ import bcrypt from "bcryptjs"
 export async function GET(req: NextRequest) {
   try {
     // Retrieve the authentication cookie
-    const authCookie = cookies().get("auth")
+    const authCookie = (await cookies()).get("auth")
 
     if (!authCookie) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     // Retrieve the authentication cookie
-    const authCookie = cookies().get("auth")
+    const authCookie = (await cookies()).get("auth")
 
     if (!authCookie) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 })

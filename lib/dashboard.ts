@@ -3,7 +3,7 @@ import { cookies } from "next/headers"
 
 // Get the current user from the session
 async function getCurrentUser() {
-  const cookieStore = cookies()
+  const cookieStore = await cookies()
   const authCookie = cookieStore.get("auth")
 
   if (!authCookie) {
@@ -39,12 +39,12 @@ export async function getDashboardStats() {
     })
 
     // Count total users (only admins can see all users)
-    const totalUsers =
-      session.role === "admin"
-        ? await prisma.oUR_USER.count()
-        : await prisma.oUR_USER.count({
-            where: { createdById: session.id },
-          })
+    const totalUsers = await prisma.oUR_USER.count({
+      where: {
+        createdById: session.id,
+        id: { not: session.id }, // Exclude the admin themselves
+      },
+    })
 
     // Count low stock items
     const lowStockItems = await prisma.product.count({
