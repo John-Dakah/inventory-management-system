@@ -16,34 +16,37 @@ export async function getCurrentUser() {
 // Calculate total inventory value
 export async function calculateInventoryValue() {
   try {
-    const currentUser = await getCurrentUser()
+    const currentUser = await getCurrentUser();
 
     if (!currentUser) {
-      throw new Error("User not authenticated")
+      throw new Error("User not authenticated");
     }
 
-    // Get all products
-    const response = await fetch("/api/reports/inventory-value", {
-      method: "POST",
+    // Build the query parameters based on the user's role
+    const whereClause = currentUser.role !== "sales_person" ? { createdById: currentUser.id } : {};
+    const queryParams = new URLSearchParams({
+      whereClause: JSON.stringify(whereClause),
+    });
+
+    // Make a GET request to the API
+    const response = await fetch(`/api/reports/inventory-value?${queryParams.toString()}`, {
+      method: "GET",
       headers: {
-        "Content-Type": "application/json",
+        "Cache-Control": "no-cache",
       },
-      body: JSON.stringify({
-        whereClause: currentUser.role !== "sales_person" ? { createdById: currentUser.id } : {},
-      }),
-    })
+    });
 
     if (!response.ok) {
-      throw new Error("Failed to fetch inventory value")
+      throw new Error("Failed to fetch inventory value");
     }
 
-    const products = await response.json()
+    const data = await response.json();
 
-    // Calculate total value
-    return products.reduce((total, product) => total + product.price * product.quantity, 0)
+    // Return the inventory value
+    return data.inventoryValue || 0;
   } catch (error) {
-    console.error("Error calculating inventory value:", error)
-    return 0
+    console.error("Error calculating inventory value:", error);
+    return 0;
   }
 }
 
