@@ -63,6 +63,8 @@ export function ProductForm({
     category: "",
     vendor: "",
   })
+  const [loading, setLoading] = useState(true);
+
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [customCategory, setCustomCategory] = useState("")
   const [userSuppliers, setUserSuppliers] = useState<Supplier[]>([])
@@ -340,18 +342,24 @@ export function ProductForm({
             <div className="space-y-2">
               <Label htmlFor="vendor">Vendor</Label>
               <Select value={product.vendor} onValueChange={(value) => handleSelectChange("vendor", value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select vendor" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  {userSuppliers.map((supplier) => (
-                    <SelectItem key={supplier.id} value={supplier.name}>
-                      {supplier.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+      <SelectTrigger>
+        <SelectValue placeholder="Select vendor" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="none">None</SelectItem>
+        {loading ? (
+          <SelectItem value="loading" disabled>
+            Loading...
+          </SelectItem>
+        ) : (
+          userSuppliers.map((supplier) => (
+            <SelectItem key={supplier.id} value={supplier.name}>
+              {supplier.name}
+            </SelectItem>
+          ))
+        )}
+      </SelectContent>
+    </Select>
             </div>
           </div>
 
