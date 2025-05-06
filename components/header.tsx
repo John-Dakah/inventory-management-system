@@ -83,16 +83,7 @@ export function Header() {
                 }
               }}
             >
-              <Bell className="h-5 w-5" />
-              {notificationCount > 0 && (
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground"
-                >
-                  {notificationCount}
-                </motion.div>
-              )}
+              
             </Button>
 
             <AnimatePresence>

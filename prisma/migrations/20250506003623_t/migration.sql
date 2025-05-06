@@ -2,7 +2,7 @@
 CREATE TYPE "UserRole" AS ENUM ('admin', 'warehouse_manager', 'sales_person');
 
 -- CreateTable
-CREATE TABLE "OUR_USER" (
+CREATE TABLE "oUR_USER" (
     "id" TEXT NOT NULL,
     "email" TEXT NOT NULL,
     "password" TEXT NOT NULL,
@@ -22,7 +22,7 @@ CREATE TABLE "OUR_USER" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
-    CONSTRAINT "OUR_USER_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "oUR_USER_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -139,6 +139,8 @@ CREATE TABLE "RegisterSession" (
     "closedAt" TIMESTAMP(3),
     "openingBalance" DOUBLE PRECISION NOT NULL,
     "closingBalance" DOUBLE PRECISION,
+    "cashIn" DOUBLE PRECISION,
+    "cashOut" DOUBLE PRECISION,
     "difference" DOUBLE PRECISION,
     "status" TEXT NOT NULL,
     "notes" TEXT,
@@ -146,12 +148,21 @@ CREATE TABLE "RegisterSession" (
     "cashierName" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
+    "createdById" TEXT,
 
     CONSTRAINT "RegisterSession_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "_RegisterSessionToTransaction" (
+    "A" TEXT NOT NULL,
+    "B" TEXT NOT NULL,
+
+    CONSTRAINT "_RegisterSessionToTransaction_AB_pkey" PRIMARY KEY ("A","B")
+);
+
 -- CreateIndex
-CREATE UNIQUE INDEX "OUR_USER_email_key" ON "OUR_USER"("email");
+CREATE UNIQUE INDEX "oUR_USER_email_key" ON "oUR_USER"("email");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Product_sku_key" ON "Product"("sku");
@@ -162,29 +173,41 @@ CREATE UNIQUE INDEX "StockItem_sku_key" ON "StockItem"("sku");
 -- CreateIndex
 CREATE UNIQUE INDEX "Transaction_reference_key" ON "Transaction"("reference");
 
--- AddForeignKey
-ALTER TABLE "OUR_USER" ADD CONSTRAINT "OUR_USER_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "OUR_USER"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+-- CreateIndex
+CREATE INDEX "_RegisterSessionToTransaction_B_index" ON "_RegisterSessionToTransaction"("B");
 
 -- AddForeignKey
-ALTER TABLE "Product" ADD CONSTRAINT "Product_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "OUR_USER"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "oUR_USER" ADD CONSTRAINT "oUR_USER_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "oUR_USER"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Supplier" ADD CONSTRAINT "Supplier_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "OUR_USER"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "Product" ADD CONSTRAINT "Product_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "oUR_USER"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "StockItem" ADD CONSTRAINT "StockItem_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "OUR_USER"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "Supplier" ADD CONSTRAINT "Supplier_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "oUR_USER"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "StockItem" ADD CONSTRAINT "StockItem_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "oUR_USER"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "StockTransaction" ADD CONSTRAINT "StockTransaction_stockItemId_fkey" FOREIGN KEY ("stockItemId") REFERENCES "StockItem"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "StockTransaction" ADD CONSTRAINT "StockTransaction_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "OUR_USER"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "StockTransaction" ADD CONSTRAINT "StockTransaction_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "oUR_USER"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Transaction" ADD CONSTRAINT "Transaction_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "OUR_USER"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "Transaction" ADD CONSTRAINT "Transaction_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "oUR_USER"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "TransactionItem" ADD CONSTRAINT "TransactionItem_transactionId_fkey" FOREIGN KEY ("transactionId") REFERENCES "Transaction"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "TransactionItem" ADD CONSTRAINT "TransactionItem_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "RegisterSession" ADD CONSTRAINT "RegisterSession_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "oUR_USER"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "_RegisterSessionToTransaction" ADD CONSTRAINT "_RegisterSessionToTransaction_A_fkey" FOREIGN KEY ("A") REFERENCES "RegisterSession"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "_RegisterSessionToTransaction" ADD CONSTRAINT "_RegisterSessionToTransaction_B_fkey" FOREIGN KEY ("B") REFERENCES "Transaction"("id") ON DELETE CASCADE ON UPDATE CASCADE;

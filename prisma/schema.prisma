@@ -122,8 +122,6 @@ model StockTransaction {
 
 // Transaction model
 model Transaction {
-
-
   id            String            @id @default(cuid())
   reference     String            @unique // e.g., "SALE-12345"
   date          DateTime          @default(now())

@@ -74,7 +74,7 @@ const PAYMENT_METHODS = [
 ]
 
 // Error handler component
-function ErrorHandler({ error, details, onClose, timeout = 10000 }) {
+function ErrorHandler({ error, details, onClose, timeout = 10000 }: { error?: string; details?: string; onClose?: () => void; timeout?: number }) {
   const [visible, setVisible] = useState(Boolean(error))
 
   useEffect(() => {
