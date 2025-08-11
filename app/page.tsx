@@ -48,7 +48,6 @@ import { FloatingNavbar } from "@/components/ui/floating-navbar"
 import { HoverEffect } from "@/components/ui/card-hover-effect"
 import { InfiniteMovingCards } from "@/components/ui/infinite-moving-cards"
 import { TracingBeam } from "@/components/ui/tracing-beam"
-
 import { Progress } from "@/components/ui/progress"
 
 
